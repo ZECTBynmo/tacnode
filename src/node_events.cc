@@ -69,4 +69,130 @@ bool EventEmitter::Emit(Handle<String> event, int argc, Handle<Value> argv[]) {
   return true;
 }
 
+
+// EventSource
+
+EventSource* EventSource::current_source;
+
+
+Local<Value> EventSource::MakeCallback(int argc, Handle<Value> argv[]) {
+  HandleScope scope;
+
+  Local<Value> callback_v = handle_->Get(String::NewSymbol("callback"));
+  if (!callback_v->IsFunction()) return Local<Value>();
+  Local<Function> callback = Local<Function>::Cast(callback_v);
+
+  // TODO DTrace probe here.
+
+  TryCatch try_catch;
+
+  assert(current_source == NULL);
+  current_source = this;
+
+  Local<Value> ret = callback->Call(handle_, argc, argv);
+
+  current_source = NULL;
+
+  if (try_catch.HasCaught()) {
+    // Here we print the stack trace from try_catch
+    ReportException(try_catch, true);
+    // Then we print the stored stacktrace plus our ancestors stacks.
+    PrintStack();
+    // Stop whatever activity might have been going on?
+  }
+
+  return scope.Close(ret);
+}
+
+
+void EventSource::PrintStack(int count) {
+  if (trace_.IsEmpty()) return;
+
+
+  // Print from for this EventSource
+  fprintf(stderr, "   ---------------------------\n");
+  int length = trace_->GetFrameCount();
+  for (int i = 0; i < length; i++) {
+    Local<StackFrame> frame = trace_->GetFrame(i);
+
+    String::Utf8Value script_name(frame->GetScriptName());
+    String::Utf8Value function_name(frame->GetFunctionName());
+    int column = frame->GetColumn();
+    int line_number = frame->GetLineNumber();
+
+    // how do you cast Value to StackFrame ?
+    // print frame somehow...
+    fprintf(stderr, 
+            "    at %s (%s:%d:%d)\n",
+            *function_name,
+            *script_name,
+            line_number,
+            column);
+  }
+
+  // Recursively print up to kAncestorStackLimit ancestor traces...
+  if (parent_source_.IsEmpty() == false && count < kAncestorStackLimit) {
+    EventSource *parent = ObjectWrap::Unwrap<EventSource>(parent_source_);
+    parent->PrintStack(count + 1);
+  }
+}
+
+
+void EventSource::Active() {
+  Ref();
+  RecordStack();
+  // TODO DTrace probe here.
+}
+
+
+void EventSource::Inactive() {
+  DeleteParent();
+  ClearStack();
+  Unref();
+}
+
+
+void EventSource::ClearStack() {
+  if (!trace_.IsEmpty()) {
+    trace_.Dispose();
+    trace_.Clear();
+  }
+}
+
+
+void EventSource::RecordStack() {
+  HandleScope scope;
+
+  ClearStack();
+
+  // Assume inside HandleScope
+  Local<StackTrace> trace =
+      StackTrace::CurrentStackTrace(kFrameLimit, StackTrace::kOverview);
+
+  trace_ = Persistent<StackTrace>::New(trace);
+
+  // Set parent.
+  if (current_source) {
+    parent_source_ = Persistent<Object>::New(current_source->handle_);
+    parent_source_.MakeWeak(this, WeakParent);
+  }
+}
+
+
+void EventSource::WeakParent(Persistent<Value> object, void* data) {
+  EventSource *s = static_cast<EventSource*>(data);
+  assert(s->parent_source_->StrictEquals(object));
+  s->DeleteParent();
+}
+
+
+void EventSource::DeleteParent() {
+  if (!parent_source_.IsEmpty()) {
+    parent_source_.ClearWeak();
+    parent_source_.Dispose();
+    parent_source_.Clear();
+  }
+}
+
+
 }  // namespace node

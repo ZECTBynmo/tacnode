@@ -917,7 +917,7 @@ const char* ToCString(const v8::String::Utf8Value& value) {
   return *value ? *value : "<str conversion failed>";
 }
 
-static void ReportException(TryCatch &try_catch, bool show_line) {
+void ReportException(TryCatch &try_catch, bool show_line) {
   Handle<Message> message = try_catch.Message();
 
   node::Stdio::DisableRawMode(STDIN_FILENO);

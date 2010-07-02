@@ -36,7 +36,7 @@ namespace node {
 do {                                                                      \
   v8::Local<v8::Signature> __callback##_SIG = v8::Signature::New(templ);  \
   v8::Local<v8::FunctionTemplate> __callback##_TEM =                      \
-    FunctionTemplate::New(callback, v8::Handle<v8::Value>(),              \
+    v8::FunctionTemplate::New(callback, v8::Handle<v8::Value>(),          \
                           __callback##_SIG);                              \
   templ->PrototypeTemplate()->Set(v8::String::NewSymbol(name),            \
                                   __callback##_TEM);                      \
@@ -86,6 +86,8 @@ v8::Local<v8::Value> ErrnoException(int errorno,
                                     const char *syscall = NULL,
                                     const char *msg = "",
                                     const char *path = NULL);
+
+void ReportException(v8::TryCatch &try_catch, bool show_line);
 
 const char *signo_string(int errorno);
 
