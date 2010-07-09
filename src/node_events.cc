@@ -99,6 +99,8 @@ Local<Value> EventSource::MakeCallback(int argc, Handle<Value> argv[]) {
     // Then we print the stored stacktrace plus our ancestors stacks.
     PrintStack();
     // Stop whatever activity might have been going on?
+
+    exit(1);
   }
 
   return scope.Close(ret);
@@ -110,7 +112,7 @@ void EventSource::PrintStack(int count) {
 
 
   // Print from for this EventSource
-  fprintf(stderr, "   ---------------------------\n");
+  fprintf(stderr, "    ---------------------------\n");
   int length = trace_->GetFrameCount();
   for (int i = 0; i < length; i++) {
     Local<StackFrame> frame = trace_->GetFrame(i);
