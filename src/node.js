@@ -110,7 +110,8 @@ var constants; // lazy loaded.
       if (!signalWatchers.hasOwnProperty(type)) {
         if (!constants) constants = process.binding("constants");
         var b = process.binding('signal_watcher');
-        var w = new b.SignalWatcher(constants[type]);
+        var w = new b.SignalWatcher();
+        w.set(constants[type]);
         w.callback = function () { process.emit(type); };
         signalWatchers[type] = w;
         w.start();

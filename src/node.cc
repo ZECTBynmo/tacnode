@@ -1463,6 +1463,11 @@ static Handle<Value> Binding(const Arguments& args) {
     Timer::Initialize(exports);
     binding_cache->Set(module, exports);
 
+  } else if (!strcmp(*module_v, "signal_watcher")) {
+    exports = Object::New();
+    SignalWatcher::Initialize(exports);
+    binding_cache->Set(module, exports);
+
   } else if (!strcmp(*module_v, "natives")) {
     exports = Object::New();
     // Explicitly define native sources.

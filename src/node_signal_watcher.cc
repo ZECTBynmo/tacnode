@@ -6,52 +6,30 @@ namespace node {
 
 using namespace v8;
 
-Persistent<FunctionTemplate> SignalWatcher::constructor_template;
-static Persistent<String> callback_symbol;
 
 void SignalWatcher::Initialize(Handle<Object> target) {
   HandleScope scope;
 
-  Local<FunctionTemplate> t = FunctionTemplate::New(SignalWatcher::New);
-  constructor_template = Persistent<FunctionTemplate>::New(t);
-  constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  constructor_template->SetClassName(String::NewSymbol("SignalWatcher"));
+  Local<FunctionTemplate> t = BuildTemplate<SignalWatcher>("SignalWatcher");
 
-  NODE_SET_PROTOTYPE_METHOD(constructor_template, "start", SignalWatcher::Start);
-  NODE_SET_PROTOTYPE_METHOD(constructor_template, "stop", SignalWatcher::Stop);
+  NODE_SET_PROTOTYPE_METHOD(t, "start", Start);
+  NODE_SET_PROTOTYPE_METHOD(t, "stop", Stop);
+  NODE_SET_PROTOTYPE_METHOD(t, "set", Set);
 
-  target->Set(String::NewSymbol("SignalWatcher"),
-      constructor_template->GetFunction());
-
-  callback_symbol = NODE_PSYMBOL("callback");
+  target->Set(String::NewSymbol("SignalWatcher"), t->GetFunction());
 }
+
 
 void SignalWatcher::Callback(EV_P_ ev_signal *watcher, int revents) {
   SignalWatcher *w = static_cast<SignalWatcher*>(watcher->data);
-
   assert(watcher == &w->watcher_);
-
-  HandleScope scope;
-
-  Local<Value> callback_v = w->handle_->Get(callback_symbol);
-  if (!callback_v->IsFunction()) {
-    w->Stop();
-    return;
-  }
-
-  Local<Function> callback = Local<Function>::Cast(callback_v);
-
-  TryCatch try_catch;
-
-  callback->Call(w->handle_, 0, NULL);
-
-  if (try_catch.HasCaught()) {
-    FatalException(try_catch);
-  }
+  w->MakeCallback(0, NULL);
 }
 
-Handle<Value> SignalWatcher::New(const Arguments& args) {
+
+Handle<Value> SignalWatcher::Set(const Arguments& args) {
   HandleScope scope;
+  SignalWatcher *w = ObjectWrap::Unwrap<SignalWatcher>(args.Holder());
 
   if (args.Length() != 1 || !args[0]->IsInt32()) {
     return ThrowException(String::New("Bad arguments"));
@@ -59,11 +37,10 @@ Handle<Value> SignalWatcher::New(const Arguments& args) {
 
   int sig = args[0]->Int32Value();
 
-  SignalWatcher *w = new SignalWatcher(sig);
-  w->Wrap(args.Holder());
-
-  return args.This();
+  ev_signal_set(&w->watcher_, sig);
+  return Undefined();
 }
+
 
 Handle<Value> SignalWatcher::Start(const Arguments& args) {
   HandleScope scope;
@@ -72,13 +49,15 @@ Handle<Value> SignalWatcher::Start(const Arguments& args) {
   return Undefined();
 }
 
+
 void SignalWatcher::Start () {
-  if (!watcher_.active) {
+  if (!ev_is_active(&watcher_)) {
     ev_signal_start(EV_DEFAULT_UC_ &watcher_);
     ev_unref(EV_DEFAULT_UC);
-    Ref();
+    Active();
   }
 }
+
 
 Handle<Value> SignalWatcher::Stop(const Arguments& args) {
   HandleScope scope;
@@ -87,13 +66,15 @@ Handle<Value> SignalWatcher::Stop(const Arguments& args) {
   return Undefined();
 }
 
+
 void SignalWatcher::Stop () {
-  if (watcher_.active) {
+  if (ev_is_active(&watcher_)) {
     ev_ref(EV_DEFAULT_UC);
     ev_signal_stop(EV_DEFAULT_UC_ &watcher_);
-    Unref();
+    Inactive();
   }
 }
+
 
 }  // namespace node
 
