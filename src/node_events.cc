@@ -94,14 +94,18 @@ Local<Value> EventSource::MakeCallback(int argc, Handle<Value> argv[]) {
   current_source = NULL;
 
   if (try_catch.HasCaught()) {
+    // TODO Look for 'uncaughtException' handlers. 
+
     // Here we print the stack trace from try_catch
     ReportException(try_catch, true);
     // Then we print the stored stacktrace plus our ancestors stacks.
     PrintStack();
-    // Stop whatever activity might have been going on?
+    // XXX Stop whatever activity might have been going on?
 
     exit(1);
   }
+
+  // Call nextTick callbacks?
 
   return scope.Close(ret);
 }
