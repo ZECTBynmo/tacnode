@@ -36,12 +36,10 @@ static Persistent<String> errno_symbol;
 // file-level rather than method-level to avoid excess stack usage.
 static char getbuf[PATH_MAX + 1];
 
-static int After(eio_req *req) {
+int EIORequest::After(eio_req *req) {
+  EIORequest *r = static_cast<EIORequest*>(req->data);
+
   HandleScope scope;
-
-  Persistent<Function> *callback = cb_unwrap(req->data);
-
-  ev_unref(EV_DEFAULT_UC);
 
   int argc = 0;
   Local<Value> argv[6];  // 6 is the maximum number of args
@@ -150,26 +148,28 @@ static int After(eio_req *req) {
     }
   }
 
-  TryCatch try_catch;
 
-  (*callback)->Call(v8::Context::GetCurrent()->Global(), argc, argv);
-
-  if (try_catch.HasCaught()) {
-    FatalException(try_catch);
-  }
-
-  // Dispose of the persistent handle
-  cb_destroy(callback);
+  r->MakeCallback(argc, argv);
+  r->Inactive();
 
   return 0;
 }
 
-#define ASYNC_CALL(func, callback, ...)                           \
-  eio_req *req = eio_##func(__VA_ARGS__, EIO_PRI_DEFAULT, After,  \
-    cb_persist(callback));                                        \
-  assert(req);                                                    \
-  ev_ref(EV_DEFAULT_UC);                                          \
-  return Undefined();
+
+void EIORequest::Set(eio_req *req, Handle<Value> callback) {
+  req_ = req;
+  req->data = this;
+  handle_->ToObject()->Set(String::NewSymbol("callback"), callback);
+  Active();
+}
+
+
+#define ASYNC_CALL(func, callback, ...)                   \
+  EIORequest* r = EIORequest::New();                      \
+  eio_req *req = eio_##func(__VA_ARGS__, EIO_PRI_DEFAULT, \
+                            EIORequest::After, r);        \
+  r->Set(req, callback);                                  \
+  return scope.Close(r->handle_);
 
 static Handle<Value> Close(const Arguments& args) {
   HandleScope scope;
@@ -775,6 +775,31 @@ static Handle<Value> Chown(const Arguments& args) {
   }
 }
 
+
+static Persistent<FunctionTemplate> eio_request_template;
+
+void EIORequest::Initialize(Handle<Object> target) {
+  HandleScope scope;
+
+  Local<FunctionTemplate> t = BuildTemplate<EIORequest>("EIORequest");
+
+   eio_request_template = Persistent<FunctionTemplate>::New(t);
+
+  //NODE_SET_PROTOTYPE_METHOD(t, "cancel", EIORequest::Cancel);
+
+  target->Set(String::NewSymbol("EIORequest"),
+              eio_request_template->GetFunction());
+}
+
+
+EIORequest* EIORequest::New() {
+  HandleScope scope;
+  Local<Object> req_obj = eio_request_template->GetFunction()->NewInstance();
+  EIORequest *r = ObjectWrap::Unwrap<EIORequest>(req_obj);
+  return r;
+}
+
+
 void File::Initialize(Handle<Object> target) {
   HandleScope scope;
 
@@ -803,6 +828,8 @@ void File::Initialize(Handle<Object> target) {
 
   errno_symbol = NODE_PSYMBOL("errno");
   encoding_symbol = NODE_PSYMBOL("node:encoding");
+
+  EIORequest::Initialize(target);
 }
 
 void InitFs(Handle<Object> target) {
