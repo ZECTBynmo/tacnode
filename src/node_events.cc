@@ -128,12 +128,18 @@ void EventSource::PrintStack(int count) {
 
     // how do you cast Value to StackFrame ?
     // print frame somehow...
+    /*
     fprintf(stderr, 
             "    at %s (%s:%d:%d)\n",
             *function_name,
             *script_name,
             line_number,
             column);
+    */
+    fprintf(stderr,
+            "    at %s %d\n",
+            *script_name,
+            line_number);
   }
 
   // Recursively print up to kAncestorStackLimit ancestor traces...
