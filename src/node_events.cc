@@ -2,6 +2,8 @@
 #include <node_events.h>
 #include <node.h>
 
+#define RECORD 0
+
 namespace node {
 
 using namespace v8;
@@ -178,6 +180,7 @@ void EventSource::RecordStack() {
   ClearStack();
 
   // Assume inside HandleScope
+#if RECORD
   Local<StackTrace> trace =
       StackTrace::CurrentStackTrace(kFrameLimit, StackTrace::kOverview);
 
@@ -188,6 +191,7 @@ void EventSource::RecordStack() {
     parent_source_ = Persistent<Object>::New(current_source->handle_);
     parent_source_.MakeWeak(this, WeakParent);
   }
+#endif
 }
 
 
