@@ -2,7 +2,12 @@
 #include <node_io_watcher.h>
 
 #include <node.h>
+#include <node_buffer.h>
 #include <v8.h>
+
+
+#include <sys/uio.h> /* writev */
+#include <errno.h>
 
 #include <assert.h>
 
@@ -10,8 +15,16 @@ namespace node {
 
 using namespace v8;
 
+static ev_prepare dumper;
+static Persistent<Object> dump_queue;
+
 Persistent<FunctionTemplate> IOWatcher::constructor_template;
 Persistent<String> callback_symbol;
+
+static Persistent<String> next_sym;
+static Persistent<String> data_sym;
+static Persistent<String> offset_sym;
+static Persistent<String> buckets_sym;
 
 
 void IOWatcher::Initialize(Handle<Object> target) {
@@ -26,9 +39,23 @@ void IOWatcher::Initialize(Handle<Object> target) {
   NODE_SET_PROTOTYPE_METHOD(constructor_template, "stop", IOWatcher::Stop);
   NODE_SET_PROTOTYPE_METHOD(constructor_template, "set", IOWatcher::Set);
 
-  target->Set(String::NewSymbol("IOWatcher"), constructor_template->GetFunction());
+  Local<Function> io_watcher = constructor_template->GetFunction();
+  target->Set(String::NewSymbol("IOWatcher"), io_watcher);
 
   callback_symbol = NODE_PSYMBOL("callback");
+
+  next_sym = NODE_PSYMBOL("next");
+  buckets_sym = NODE_PSYMBOL("buckets");
+  offset_sym = NODE_PSYMBOL("offset");
+  data_sym = NODE_PSYMBOL("data");
+
+
+  ev_prepare_init(&dumper, IOWatcher::Dump);
+  ev_prepare_start(EV_DEFAULT_UC_ &dumper);
+  ev_unref(EV_DEFAULT_UC);
+
+  dump_queue = Persistent<Object>::New(Object::New());
+  io_watcher->Set(String::NewSymbol("dumpQueue"), dump_queue);
 }
 
 
@@ -142,6 +169,260 @@ Handle<Value> IOWatcher::Set(const Arguments& args) {
 
   return Undefined();
 }
+
+#define KB 1024
+
+/*
+ * A large javascript object structure is built up in net.js. The function
+ * Dump is called at the end of each iteration, before select() is called,
+ * to push all the data out to sockets.
+ *
+ * The structure looks like this:
+ *
+ * IOWatcher.dumpQueue -> W -> W -> W -> W
+ *                        |    |    |    |
+ *                        o    o    o    o
+ *                        |    |         |
+ *                        o    o         o
+ *                             |         |
+ *                             o         o
+ *                                       |
+ *                                       o
+ *
+ * Where the 'W' nodes are IOWatcher instances associated with a particular
+ * socket. The 'o' nodes are little javascript objects with a 'data'
+ * member. 'data' is either a string or buffer. E.G.
+ *   o = { data: "hello world" }
+ *
+ */
+
+// To enable this debug output, do:
+//   echo "CPPFLAGS += -DDUMP_DEBUG" >> config.mak
+//   make clean all
+#ifdef DUMP_DEBUG
+#define DEBUG_PRINT(fmt,...) do {  \
+  fprintf(stderr, "%s:%d ",  __FILE__, __LINE__); \
+  fprintf(stderr, fmt "\n", ##__VA_ARGS__);  \
+} while (0)
+#else
+#define DEBUG_PRINT(fmt,...)
+#endif
+
+
+void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
+  assert(revents == EV_PREPARE);
+  assert(watcher == &dumper);
+
+  HandleScope scope;
+
+
+#define IOV_SIZE 10000
+  static struct iovec iov[IOV_SIZE];
+
+  // Loop over all 'fd objects' in the dump queue. Each object stands for a
+  // socket that has stuff to be written out.
+  Local<Value> writer_node_v;
+  Local<Object> writer_node;
+  Local<Object> writer_node_last = Local<Object>::New(dump_queue);
+
+  for (writer_node_v = dump_queue->Get(next_sym);
+       writer_node_v->IsObject();
+       writer_node_v = writer_node->Get(next_sym),
+       writer_node_last = writer_node) {
+
+    writer_node = writer_node_v->ToObject();
+
+    IOWatcher *io = ObjectWrap::Unwrap<IOWatcher>(writer_node);
+    // stats (just for fun)
+    io->dumps_++;
+    io->last_dump_ = ev_now(EV_DEFAULT_UC);
+
+    DEBUG_PRINT("Dumping %d", io->watcher_.fd);
+
+    // Number of items we've stored in iov
+    int iovcnt = 0;
+    // Number of bytes we've stored in iov
+    size_t to_write = 0;
+
+
+    // Offset is only so large as the first buffer of data
+    // this occurs when a previous writev could not entirely flush
+    // a bucket.
+    size_t offset = 0;
+    if (writer_node->Has(offset_sym)) {
+      offset = writer_node->Get(offset_sym)->Uint32Value();
+    }
+
+    // Loop over all the buckets for this particular socket.
+    Local<Value> bucket_v;
+    Local<Object> bucket;
+    bool first = true;
+    unsigned int bucket_index = 0;
+    for (bucket_v = writer_node->Get(buckets_sym);
+         bucket_v->IsObject() && to_write < 64*KB && iovcnt < IOV_SIZE;
+         bucket_v = bucket->Get(next_sym), bucket_index++) {
+      bucket = bucket_v->ToObject();
+
+      Local<Value> data_v = bucket->Get(data_sym);
+      // net.js will be setting this 'data' value. We can ensure that it is
+      // never empty.
+      assert(!data_v.IsEmpty());
+
+      Local<Object> buf_object;
+
+      if (data_v->IsString()) {
+        // FIXME This is suboptimal - Buffer::New is slow.
+        // Also insert v8::String::Pointers() hack here.
+        Local<String> s = data_v->ToString();
+        buf_object = Local<Object>::New(Buffer::New(s));
+        bucket->Set(data_sym, buf_object);
+      } else if (Buffer::HasInstance(data_v)) {
+        buf_object = data_v->ToObject();
+      } else {
+        assert(0);
+      }
+
+      size_t l = Buffer::Length(buf_object);
+
+      if (first /* ugly */) {
+        assert(offset < l);
+        iov[iovcnt].iov_base = Buffer::Data(buf_object) + offset;
+        iov[iovcnt].iov_len = l - offset;
+      } else {
+        iov[iovcnt].iov_base = Buffer::Data(buf_object);
+        iov[iovcnt].iov_len = l;
+      }
+      to_write += iov[iovcnt].iov_len;
+      iovcnt++;
+
+      first = false; // ugly
+    }
+
+    ssize_t written = writev(io->watcher_.fd, iov, iovcnt);
+
+    DEBUG_PRINT("iovcnt: %d, to_write: %ld, written: %ld", iovcnt, to_write, written);
+
+    if (written < 0) {
+      switch (errno) {
+#if 0
+        case EPIPE:
+          // What do to do with EPIPE? Somehow we should be emitting an
+          // error event on the socket object...
+          break;
+#endif
+
+        case EAGAIN:
+          DEBUG_PRINT("EAGAIN");
+          io->Start();
+          continue;
+
+        default:
+          perror("writev");
+          continue;
+      }
+    }
+
+    // what about written == 0 ?
+
+    // Now drop the buckets that have been written.
+    first = true;
+    bucket_index = 0;
+
+    for (bucket_v = writer_node->Get(buckets_sym);
+         written > 0 && bucket_v->IsObject();
+         bucket_v = bucket->Get(next_sym), bucket_index++) {
+      bucket = bucket_v->ToObject();
+      assert(written > 0);
+
+      Local<Value> data_v = bucket->Get(data_sym);
+      assert(!data_v.IsEmpty());
+
+      // At the moment we're turning all string into buffers
+      // so we assert that this is not a string. However, when the
+      // "Pointer patch" lands, this assert will need to be removed.
+      assert(!data_v->IsString());
+      // When the "Pointer patch" lands, we will need to be careful
+      // to somehow store the length of strings that we're optimizing on
+      // so that it need not be recalculated here. Note the "Pointer patch"
+      // will only apply to ASCII strings - UTF8 ones will need to be
+      // serialized onto a buffer.
+      size_t bucket_len = Buffer::Length(data_v->ToObject());
+
+      DEBUG_PRINT("%ld bucket len: %ld", bucket_index, bucket_len);
+
+      if (first) {
+        // Only on the first bucket does the offset matter.
+        if (offset + written < bucket_len) {
+          // we have not written the entire first bucket
+          DEBUG_PRINT("%ld Only wrote part of the first buffer. "
+                      "setting watcher.offset = %ld",
+                      bucket_index,
+                      offset + written);
+
+          writer_node->Set(offset_sym,
+                          Integer::NewFromUnsigned(offset + written));
+          break;
+        } else {
+          DEBUG_PRINT("%ld wrote the whole first bucket. discarding.",
+                      bucket_index);
+          // We have written the entire bucket, discard it.
+          written -= bucket_len - offset;
+          writer_node->Set(buckets_sym, bucket->Get(next_sym));
+        }
+      } else {
+        // not first
+
+        if (static_cast<size_t>(written) < bucket_len) {
+          // Didn't write the whole bucket.
+          DEBUG_PRINT("%ld Only wrote part of the buffer. "
+                      "setting watcher.offset = %ld",
+                      bucket_index,
+                      offset + written);
+          writer_node->Set(offset_sym,
+                          Integer::NewFromUnsigned(written));
+          break;
+        } else {
+          // Wrote the whole bucket, drop it.
+          DEBUG_PRINT("%ld wrote the whole bucket. discarding.", bucket_index);
+          written -= bucket_len - offset;
+          written -= bucket_len;
+          writer_node->Set(buckets_sym, bucket->Get(next_sym));
+        }
+      }
+
+      first = false;
+    }
+
+    /*
+     * Finished dumping the buckets.
+     * If our list of buckets is empty, we can emit 'drain' (somehow?) and
+     * forget about this socket. Nothing needs to be done.
+     *
+     * Otherwise we need to prepare the io_watcher to wait for the interface
+     * to become writable again.
+     */
+
+    if (writer_node->Get(buckets_sym)->IsUndefined()) {
+      // Emptied the queue for this socket.
+      // Don't wait for it to become writable.
+      io->Stop();
+      DEBUG_PRINT("Stop watcher %d", io->watcher_.fd);
+
+      // Drop the writer_node from the list.
+      writer_node_last->Set(next_sym, writer_node->Get(next_sym));
+
+      // Emit drain event!
+
+    } else {
+      io->Start();
+      DEBUG_PRINT("Started watcher %d", io->watcher_.fd);
+      // current->next = new_write_queue->next
+
+      // new_write_queue->next = current
+    }
+  }
+}
+
 
 
 
