@@ -4,9 +4,9 @@ var net = require('net');
 
 var ncomplete = 0;
 
-function test (N, size, cb) {
+function test (N, b, cb) {
   //console.trace();
-  var expected = N * size;
+  var expected = N * b.length;
   var nread = 0;
 
   // Create a pipe
@@ -51,10 +51,6 @@ function test (N, size, cb) {
 
 
   // Create out single 1mb buffer.
-  var b = new Buffer(size);
-  for (var i = 0; i < size; i++) {
-    b[i] = 100;
-  }
 
   // Fill the dumpQueue with N copies of that buffer.
   var x = IOWatcher.dumpQueue;
@@ -77,7 +73,7 @@ function runTests (values) {
   function go () {
     if (ncomplete < values.length) {
       var v = values[ncomplete];
-      console.log("go %j", v);
+      console.log("test N=%d, size=%d", v[0], v[1].length);
       test(v[0], v[1], go);
     }
   }
@@ -85,13 +81,15 @@ function runTests (values) {
   go();
 }
 
-runTests([ [30, 1000]
-         , [4, 10000]
-         , [50, 1024*1024]
-         , [500, 40960+1]
-         , [500, 40960-1]
-         , [500, 40960]
-         , [500, 1024*1024+1]
+runTests([ [30, Buffer(1000)]
+         , [4, Buffer(10000)]
+         , [1, "hello world\n"]
+         , [50, Buffer(1024*1024)]
+         , [500, Buffer(40960+1)]
+         , [500, Buffer(40960-1)]
+         , [500, Buffer(40960)]
+         , [500, Buffer(1024*1024+1)]
+         , [50000, "hello world\n"]
          ]);
 
 
