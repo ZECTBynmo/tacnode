@@ -32,7 +32,7 @@ function test (N, size, cb) {
     if (nread >= expected) {
       assert.ok(nread === expected);
       w.stop();
-      console.error("\ndone");
+      console.error("done. wrote %d bytes\n", nread);
       process.binding('net').close(fds[1]);
     }
   });
@@ -91,6 +91,7 @@ runTests([ [30, 1000]
          , [500, 40960+1]
          , [500, 40960-1]
          , [500, 40960]
+         , [500, 1024*1024+1]
          ]);
 
 

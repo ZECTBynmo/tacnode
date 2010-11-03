@@ -199,9 +199,8 @@ Handle<Value> IOWatcher::Set(const Arguments& args) {
  *
  */
 
-// To enable this debug output, add '-DDUMP_DEBUG' to
-// 'build/c4che/default.cache.py' and
-//   make clean all
+// To enable this debug output, add '-DDUMP_DEBUG' to CPPFLAGS
+// in 'build/c4che/default.cache.py' and 'make clean all'
 #ifdef DUMP_DEBUG
 #define DEBUG_PRINT(fmt,...) \
   fprintf(stderr, "(dump:%d) " fmt "\n",  __LINE__, ##__VA_ARGS__)
