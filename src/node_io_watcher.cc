@@ -52,6 +52,9 @@ void IOWatcher::Initialize(Handle<Object> target) {
 
   ev_prepare_init(&dumper, IOWatcher::Dump);
   ev_prepare_start(EV_DEFAULT_UC_ &dumper);
+  // Need to make sure that Dump runs *after* all other prepare watchers -
+  // in particular the next tick one.
+  ev_set_priority(&dumper, EV_MINPRI);
   ev_unref(EV_DEFAULT_UC);
 
   dump_queue = Persistent<Object>::New(Object::New());
@@ -200,10 +203,8 @@ Handle<Value> IOWatcher::Set(const Arguments& args) {
 // 'build/c4che/default.cache.py' and
 //   make clean all
 #ifdef DUMP_DEBUG
-#define DEBUG_PRINT(fmt,...) do {  \
-  fprintf(stderr, "%s:%d ",  __FILE__, __LINE__); \
-  fprintf(stderr, fmt "\n", ##__VA_ARGS__);  \
-} while (0)
+#define DEBUG_PRINT(fmt,...) \
+  fprintf(stderr, "%s:%d " fmt "\n",  __FILE__, __LINE__, ##__VA_ARGS__)
 #else
 #define DEBUG_PRINT(fmt,...)
 #endif

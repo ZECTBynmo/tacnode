@@ -28,7 +28,6 @@ function test (N, size, cb) {
   // Count the data as it arrives on the read end of the pipe.
   stream.on('data', function (d) {
     nread += d.length;
-    process.stdout.write(".");
 
     if (nread >= expected) {
       assert.ok(nread === expected);
@@ -88,6 +87,7 @@ function runTests (values) {
 
 runTests([ [30, 1000]
          , [4, 10000]
+         , [50, 1024*1024]
          ]);
 
 
