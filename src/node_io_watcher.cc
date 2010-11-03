@@ -22,6 +22,7 @@ Persistent<FunctionTemplate> IOWatcher::constructor_template;
 Persistent<String> callback_symbol;
 
 static Persistent<String> next_sym;
+static Persistent<String> ondrain_sym;
 static Persistent<String> data_sym;
 static Persistent<String> offset_sym;
 static Persistent<String> buckets_sym;
@@ -45,6 +46,7 @@ void IOWatcher::Initialize(Handle<Object> target) {
   callback_symbol = NODE_PSYMBOL("callback");
 
   next_sym = NODE_PSYMBOL("next");
+  ondrain_sym = NODE_PSYMBOL("ondrain");
   buckets_sym = NODE_PSYMBOL("buckets");
   offset_sym = NODE_PSYMBOL("offset");
   data_sym = NODE_PSYMBOL("data");
@@ -245,7 +247,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
 
 
     // Offset is only so large as the first buffer of data
-    // this occurs when a previous writev could not entirely flush
+    // this occurs when a previous writev could not entirely drain
     // a bucket.
     size_t offset = 0;
     if (writer_node->Has(offset_sym)) {
@@ -412,7 +414,20 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       // Drop the writer_node from the list.
       writer_node_last->Set(next_sym, writer_node->Get(next_sym));
 
-      // Emit drain event!
+      // Emit drain event
+      if (writer_node->Has(ondrain_sym)) {
+        Local<Value> callback_v = io->handle_->Get(ondrain_sym);
+        assert(callback_v->IsFunction());
+        Local<Function> callback = Local<Function>::Cast(callback_v);
+
+        TryCatch try_catch;
+
+        callback->Call(io->handle_, 0, NULL);
+
+        if (try_catch.HasCaught()) {
+          FatalException(try_catch);
+        }
+      }
 
     } else {
       io->Start();
