@@ -383,7 +383,6 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
         } else {
           // Wrote the whole bucket, drop it.
           DEBUG_PRINT("%ld wrote the whole bucket. discarding.", bucket_index);
-          written -= bucket_len - offset;
           written -= bucket_len;
           writer_node->Set(buckets_sym, bucket->Get(next_sym));
         }
