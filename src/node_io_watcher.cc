@@ -23,6 +23,7 @@ Persistent<String> callback_symbol;
 
 static Persistent<String> next_sym;
 static Persistent<String> ondrain_sym;
+static Persistent<String> onerror_sym;
 static Persistent<String> data_sym;
 static Persistent<String> offset_sym;
 static Persistent<String> buckets_sym;
@@ -47,6 +48,7 @@ void IOWatcher::Initialize(Handle<Object> target) {
 
   next_sym = NODE_PSYMBOL("next");
   ondrain_sym = NODE_PSYMBOL("ondrain");
+  onerror_sym = NODE_PSYMBOL("onerror");
   buckets_sym = NODE_PSYMBOL("buckets");
   offset_sym = NODE_PSYMBOL("offset");
   data_sym = NODE_PSYMBOL("data");
@@ -246,9 +248,9 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     size_t to_write = 0;
 
 
-    // Offset is only so large as the first buffer of data
-    // this occurs when a previous writev could not entirely drain
-    // a bucket.
+    // Offset is only as large as the first buffer of data. (See assert
+    // below) Offset > 0 occurs when a previous writev could not entirely
+    // drain a bucket.
     size_t offset = 0;
     if (writer_node->Has(offset_sym)) {
       offset = writer_node->Get(offset_sym)->Uint32Value();
@@ -300,26 +302,30 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
 
     ssize_t written = writev(io->watcher_.fd, iov, iovcnt);
 
-    DEBUG_PRINT("iovcnt: %d, to_write: %ld, written: %ld", iovcnt, to_write, written);
+    DEBUG_PRINT("iovcnt: %d, to_write: %ld, written: %ld",
+                iovcnt,
+                to_write,
+                written);
 
     if (written < 0) {
-      switch (errno) {
-#if 0
-        case EPIPE:
-          // What do to do with EPIPE? Somehow we should be emitting an
-          // error event on the socket object...
-          break;
-#endif
+      // Allow EAGAIN.
+      if (errno != EAGAIN) {
+        // Emit error event
+        if (writer_node->Has(onerror_sym)) {
+          Local<Value> callback_v = io->handle_->Get(onerror_sym);
+          assert(callback_v->IsFunction());
+          Local<Function> callback = Local<Function>::Cast(callback_v);
 
-        case EAGAIN:
-          DEBUG_PRINT("EAGAIN");
-          io->Start();
-          continue;
+          TryCatch try_catch;
 
-        default:
-          perror("writev");
-          continue;
+          callback->Call(io->handle_, 0, NULL);
+
+          if (try_catch.HasCaught()) {
+            FatalException(try_catch);
+          }
+        }
       }
+      continue;
     }
 
     // what about written == 0 ?
@@ -396,14 +402,13 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       }
     }
 
-    /*
-     * Finished dumping the buckets.
-     * If our list of buckets is empty, we can emit 'drain' (somehow?) and
-     * forget about this socket. Nothing needs to be done.
-     *
-     * Otherwise we need to prepare the io_watcher to wait for the interface
-     * to become writable again.
-     */
+    // Finished dumping the buckets.
+    //
+    // If our list of buckets is empty, we can emit 'drain' and forget about
+    // this socket. Nothing needs to be done.
+    //
+    // Otherwise we need to prepare the io_watcher to wait for the interface
+    // to become writable again.
 
     if (writer_node->Get(buckets_sym)->IsUndefined()) {
       // Emptied the queue for this socket.
@@ -432,9 +437,6 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     } else {
       io->Start();
       DEBUG_PRINT("Started watcher %d", io->watcher_.fd);
-      // current->next = new_write_queue->next
-
-      // new_write_queue->next = current
     }
   }
 }

@@ -22,6 +22,11 @@ function test (N, b, cb) {
     ndrain++;
   }
 
+  var nerror = 0;
+  w.onerror = function () {
+    nerror++;
+  }
+
   // The read end, fds[0], will be used to count how much comes through.
   // This sets up a readable stream on fds[0].
   var stream = new net.Stream();
@@ -37,6 +42,7 @@ function test (N, b, cb) {
     if (nread >= expected) {
       assert.ok(nread === expected);
       assert.equal(1, ndrain);
+      assert.equal(0, nerror);
       w.stop();
       console.error("done. wrote %d bytes\n", nread);
       process.binding('net').close(fds[1]);
