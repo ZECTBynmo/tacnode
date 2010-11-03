@@ -204,7 +204,7 @@ Handle<Value> IOWatcher::Set(const Arguments& args) {
 //   make clean all
 #ifdef DUMP_DEBUG
 #define DEBUG_PRINT(fmt,...) \
-  fprintf(stderr, "%s:%d " fmt "\n",  __FILE__, __LINE__, ##__VA_ARGS__)
+  fprintf(stderr, "(dump:%d) " fmt "\n",  __LINE__, ##__VA_ARGS__)
 #else
 #define DEBUG_PRINT(fmt,...)
 #endif
@@ -285,6 +285,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       size_t l = Buffer::Length(buf_object);
 
       if (first /* ugly */) {
+        first = false; // ugly
         assert(offset < l);
         iov[iovcnt].iov_base = Buffer::Data(buf_object) + offset;
         iov[iovcnt].iov_len = l - offset;
@@ -294,8 +295,6 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       }
       to_write += iov[iovcnt].iov_len;
       iovcnt++;
-
-      first = false; // ugly
     }
 
     ssize_t written = writev(io->watcher_.fd, iov, iovcnt);
@@ -348,13 +347,15 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       // serialized onto a buffer.
       size_t bucket_len = Buffer::Length(data_v->ToObject());
 
-      DEBUG_PRINT("%ld bucket len: %ld", bucket_index, bucket_len);
 
       if (first) {
+        assert(bucket_len > offset);
+        first = false;
+        DEBUG_PRINT("[%ld] bucket_len: %ld, offset: %ld", bucket_index, bucket_len, offset);
         // Only on the first bucket does the offset matter.
         if (offset + written < bucket_len) {
           // we have not written the entire first bucket
-          DEBUG_PRINT("%ld Only wrote part of the first buffer. "
+          DEBUG_PRINT("[%ld] Only wrote part of the first buffer. "
                       "setting watcher.offset = %ld",
                       bucket_index,
                       offset + written);
@@ -363,18 +364,22 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
                           Integer::NewFromUnsigned(offset + written));
           break;
         } else {
-          DEBUG_PRINT("%ld wrote the whole first bucket. discarding.",
+          DEBUG_PRINT("[%ld] wrote the whole first bucket. discarding.",
                       bucket_index);
           // We have written the entire bucket, discard it.
           written -= bucket_len - offset;
           writer_node->Set(buckets_sym, bucket->Get(next_sym));
+
+          // Offset is now zero
+          writer_node->Set(offset_sym, Integer::NewFromUnsigned(0));
         }
       } else {
         // not first
+        DEBUG_PRINT("[%ld] bucket_len: %ld", bucket_index, bucket_len);
 
         if (static_cast<size_t>(written) < bucket_len) {
           // Didn't write the whole bucket.
-          DEBUG_PRINT("%ld Only wrote part of the buffer. "
+          DEBUG_PRINT("[%ld] Only wrote part of the buffer. "
                       "setting watcher.offset = %ld",
                       bucket_index,
                       offset + written);
@@ -383,13 +388,11 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
           break;
         } else {
           // Wrote the whole bucket, drop it.
-          DEBUG_PRINT("%ld wrote the whole bucket. discarding.", bucket_index);
+          DEBUG_PRINT("[%ld] wrote the whole bucket. discarding.", bucket_index);
           written -= bucket_len;
           writer_node->Set(buckets_sym, bucket->Get(next_sym));
         }
       }
-
-      first = false;
     }
 
     /*

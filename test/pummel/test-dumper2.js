@@ -5,7 +5,7 @@ var net = require('net');
 var ncomplete = 0;
 
 function test (N, size, cb) {
-  console.trace();
+  //console.trace();
   var expected = N * size;
   var nread = 0;
 
@@ -88,6 +88,9 @@ function runTests (values) {
 runTests([ [30, 1000]
          , [4, 10000]
          , [50, 1024*1024]
+         , [500, 40960+1]
+         , [500, 40960-1]
+         , [500, 40960]
          ]);
 
 
