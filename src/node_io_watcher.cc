@@ -316,9 +316,11 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
           assert(callback_v->IsFunction());
           Local<Function> callback = Local<Function>::Cast(callback_v);
 
+          Local<Value> argv[1] = { Integer::New(errno) };
+
           TryCatch try_catch;
 
-          callback->Call(io->handle_, 0, NULL);
+          callback->Call(io->handle_, 1, argv);
 
           if (try_catch.HasCaught()) {
             FatalException(try_catch);
@@ -414,6 +416,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       // Emptied the queue for this socket.
       // Don't wait for it to become writable.
       io->Stop();
+
       DEBUG_PRINT("Stop watcher %d", io->watcher_.fd);
 
       // Drop the writer_node from the list.
