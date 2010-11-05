@@ -31,7 +31,7 @@ static Persistent<String> onerror_sym;
 static Persistent<String> data_sym;
 static Persistent<String> offset_sym;
 static Persistent<String> fd_sym;
-static Persistent<String> is_unix_sym;
+static Persistent<String> is_unix_socket_sym;
 static Persistent<String> buckets_sym;
 
 
@@ -58,7 +58,7 @@ void IOWatcher::Initialize(Handle<Object> target) {
   buckets_sym = NODE_PSYMBOL("buckets");
   offset_sym = NODE_PSYMBOL("offset");
   fd_sym = NODE_PSYMBOL("fd");
-  is_unix_sym = NODE_PSYMBOL("isUnixSocket");
+  is_unix_socket_sym = NODE_PSYMBOL("isUnixSocket");
   data_sym = NODE_PSYMBOL("data");
 
 
@@ -256,7 +256,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     size_t to_write = 0;
 
     bool unix_socket = false;
-    if (writer_node->Has(is_unix_sym) && writer_node->Get(is_unix_sym)->IsTrue()) {
+    if (writer_node->Has(is_unix_socket_sym) && writer_node->Get(is_unix_socket_sym)->IsTrue()) {
       unix_socket = true;
     }
 
@@ -321,8 +321,12 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       iovcnt++;
 
       if (unix_socket && bucket->Has(fd_sym)) {
-        fd_to_send = bucket->Get(fd_sym)->Int32Value();
-        assert(fd_to_send >= 0);
+        Local<Value> fd_v = bucket->Get(fd_sym);
+        if (fd_v->IsInt32()) {
+          fd_to_send = fd_v->Int32Value();
+          DEBUG_PRINT("got fd to send: %d", fd_to_send);
+          assert(fd_to_send >= 0);
+        }
       }
     }
 
@@ -414,6 +418,11 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       size_t bucket_len = Buffer::Length(data_v->ToObject());
 
 
+      if (unix_socket && bucket->Has(fd_sym)) {
+        bucket->Set(fd_sym, Null());
+      }
+
+
       if (first) {
         assert(bucket_len > offset);
         first = false;
@@ -449,6 +458,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
                       "setting watcher.offset = %ld",
                       bucket_index,
                       offset + written);
+
           writer_node->Set(offset_sym,
                           Integer::NewFromUnsigned(written));
           break;
