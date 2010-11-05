@@ -295,8 +295,8 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       Local<Object> buf_object;
 
       if (data_v->IsString()) {
-        // FIXME This is suboptimal - Buffer::New is slow.
-        // Also insert v8::String::Pointers() hack here.
+        // TODO: insert v8::String::Pointers() hack here.
+        // TODO: handle different encodings.
         Local<String> s = data_v->ToString();
         buf_object = Local<Object>::New(Buffer::New(s));
         bucket->Set(data_sym, buf_object);
