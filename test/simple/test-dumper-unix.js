@@ -6,6 +6,8 @@ var net = require('net');
 var ncomplete = 0;
 
 function test (N, b, cb) {
+  var fdsSent = 0;
+  var fdsRecv = 0;
   //console.trace();
   var expected = N * b.length;
   var nread = 0;
@@ -36,10 +38,9 @@ function test (N, b, cb) {
   //stream.readable = true;
   stream.resume();
 
-  var fdcnt = 0;
   stream.on('fd', function (fd) {
     console.log('got fd %d', fd);
-    fdcnt++;
+    fdsRecv++;
   });
 
   // Count the data as it arrives on the other end
@@ -58,7 +59,7 @@ function test (N, b, cb) {
 
 
   stream.on('close', function () {
-    assert.equal(1, fdcnt);
+    assert.equal(fdsSent, fdsRecv);
     // check to make sure the watcher isn't in the dump queue.
     var x = IOWatcher.dumpQueue;
     while (x.next) {
@@ -81,10 +82,14 @@ function test (N, b, cb) {
   x.next = w;
 
   var bucket = w.buckets = { data: b };
-  bucket.fd = 0; // send stdin
 
   for (var i = 0; i < N-1; i++) {
     bucket = bucket.next = { data: b };
+    // Kind of randomly fill these buckets with fds.
+    if (fdsSent < 5 && i % 2 == 0) {
+      bucket.fd = 1; // send stdout
+      fdsSent++;
+    }
   }
 }
 
