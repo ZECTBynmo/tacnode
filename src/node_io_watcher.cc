@@ -204,9 +204,9 @@ Handle<Value> IOWatcher::Set(const Arguments& args) {
  *                                       |
  *                                       o
  *
- * Where the 'W' nodes are IOWatcher instances associated with a particular
- * socket. The 'o' nodes are little javascript objects with a 'data'
- * member. 'data' is either a string or buffer. E.G.
+ * Where the 'W' nodes are IOWatcher instances (JavaScript objects)
+ * associated with a particular socket. The 'o' nodes are little javascript
+ * objects with a 'data' member. 'data' is either a string or buffer. E.G.
  *   o = { data: "hello world" }
  *
  */
@@ -230,20 +230,20 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
 #define IOV_SIZE 10000
   static struct iovec iov[IOV_SIZE];
 
-  // Loop over all 'fd objects' in the dump queue. Each object stands for a
-  // socket that has stuff to be written out.
-  Local<Value> writer_node_v;
-  Local<Object> writer_node;
-  Local<Object> writer_node_last = Local<Object>::New(dump_queue);
+  // Loop over all watchers in the dump queue. Each one stands for a socket
+  // that has stuff to be written out.
+  Local<Value> watcher_obj_v;
+  Local<Object> watcher_obj;
+  Local<Object> watcher_obj_last = Local<Object>::New(dump_queue);
 
-  for (writer_node_v = dump_queue->Get(next_sym);
-       writer_node_v->IsObject();
-       writer_node_v = writer_node->Get(next_sym),
-       writer_node_last = writer_node) {
+  for (watcher_obj_v = dump_queue->Get(next_sym);
+       watcher_obj_v->IsObject();
+       watcher_obj_v = watcher_obj->Get(next_sym),
+       watcher_obj_last = watcher_obj) {
 
-    writer_node = writer_node_v->ToObject();
+    watcher_obj = watcher_obj_v->ToObject();
 
-    IOWatcher *io = ObjectWrap::Unwrap<IOWatcher>(writer_node);
+    IOWatcher *io = ObjectWrap::Unwrap<IOWatcher>(watcher_obj);
     // stats (just for fun)
     io->dumps_++;
     io->last_dump_ = ev_now(EV_DEFAULT_UC);
@@ -256,7 +256,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     size_t to_write = 0;
 
     bool unix_socket = false;
-    if (writer_node->Has(is_unix_socket_sym) && writer_node->Get(is_unix_socket_sym)->IsTrue()) {
+    if (watcher_obj->Has(is_unix_socket_sym) && watcher_obj->Get(is_unix_socket_sym)->IsTrue()) {
       unix_socket = true;
     }
 
@@ -270,8 +270,8 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     // below) Offset > 0 occurs when a previous writev could not entirely
     // drain a bucket.
     size_t offset = 0;
-    if (writer_node->Has(offset_sym)) {
-      offset = writer_node->Get(offset_sym)->Uint32Value();
+    if (watcher_obj->Has(offset_sym)) {
+      offset = watcher_obj->Get(offset_sym)->Uint32Value();
     }
 
     // Loop over all the buckets for this particular socket.
@@ -279,7 +279,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     Local<Object> bucket;
     bool first = true;
     unsigned int bucket_index = 0;
-    for (bucket_v = writer_node->Get(buckets_sym);
+    for (bucket_v = watcher_obj->Get(buckets_sym);
          fd_to_send < 0 &&
          bucket_v->IsObject() &&
          to_write < max_to_write &&
@@ -372,7 +372,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       // TODO: handle EMSGSIZE after sendmsg().
       if (errno != EAGAIN) {
         // Emit error event
-        if (writer_node->Has(onerror_sym)) {
+        if (watcher_obj->Has(onerror_sym)) {
           Local<Value> callback_v = io->handle_->Get(onerror_sym);
           assert(callback_v->IsFunction());
           Local<Function> callback = Local<Function>::Cast(callback_v);
@@ -397,7 +397,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     first = true;
     bucket_index = 0;
 
-    for (bucket_v = writer_node->Get(buckets_sym);
+    for (bucket_v = watcher_obj->Get(buckets_sym);
          written > 0 && bucket_v->IsObject();
          bucket_v = bucket->Get(next_sym), bucket_index++) {
       bucket = bucket_v->ToObject();
@@ -435,7 +435,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
                       bucket_index,
                       offset + written);
 
-          writer_node->Set(offset_sym,
+          watcher_obj->Set(offset_sym,
                           Integer::NewFromUnsigned(offset + written));
           break;
         } else {
@@ -443,10 +443,10 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
                       bucket_index);
           // We have written the entire bucket, discard it.
           written -= bucket_len - offset;
-          writer_node->Set(buckets_sym, bucket->Get(next_sym));
+          watcher_obj->Set(buckets_sym, bucket->Get(next_sym));
 
           // Offset is now zero
-          writer_node->Set(offset_sym, Integer::NewFromUnsigned(0));
+          watcher_obj->Set(offset_sym, Integer::NewFromUnsigned(0));
         }
       } else {
         // not first
@@ -459,14 +459,14 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
                       bucket_index,
                       offset + written);
 
-          writer_node->Set(offset_sym,
+          watcher_obj->Set(offset_sym,
                           Integer::NewFromUnsigned(written));
           break;
         } else {
           // Wrote the whole bucket, drop it.
           DEBUG_PRINT("[%ld] wrote the whole bucket. discarding.", bucket_index);
           written -= bucket_len;
-          writer_node->Set(buckets_sym, bucket->Get(next_sym));
+          watcher_obj->Set(buckets_sym, bucket->Get(next_sym));
         }
       }
     }
@@ -479,18 +479,18 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     // Otherwise we need to prepare the io_watcher to wait for the interface
     // to become writable again.
 
-    if (writer_node->Get(buckets_sym)->IsUndefined()) {
+    if (watcher_obj->Get(buckets_sym)->IsUndefined()) {
       // Emptied the queue for this socket.
       // Don't wait for it to become writable.
       io->Stop();
 
       DEBUG_PRINT("Stop watcher %d", io->watcher_.fd);
 
-      // Drop the writer_node from the list.
-      writer_node_last->Set(next_sym, writer_node->Get(next_sym));
+      // Drop the watcher_obj from the list.
+      watcher_obj_last->Set(next_sym, watcher_obj->Get(next_sym));
 
       // Emit drain event
-      if (writer_node->Has(ondrain_sym)) {
+      if (watcher_obj->Has(ondrain_sym)) {
         Local<Value> callback_v = io->handle_->Get(ondrain_sym);
         assert(callback_v->IsFunction());
         Local<Function> callback = Local<Function>::Cast(callback_v);
