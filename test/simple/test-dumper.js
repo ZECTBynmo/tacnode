@@ -1,5 +1,6 @@
 var assert =require('assert');
 var IOWatcher = process.binding('io_watcher').IOWatcher;
+var errnoException = process.binding('net').errnoException;
 var net = require('net');
 
 var ncomplete = 0;
@@ -23,7 +24,8 @@ function test (N, b, cb) {
   }
 
   var nerror = 0;
-  w.onerror = function () {
+  w.onerror = function (errno) {
+    throw errnoException(errno);
     nerror++;
   }
 
