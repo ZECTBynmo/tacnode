@@ -9,6 +9,10 @@
 #include <sys/uio.h> /* writev */
 #include <errno.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+
+
 #include <assert.h>
 
 namespace node {
@@ -26,6 +30,8 @@ static Persistent<String> ondrain_sym;
 static Persistent<String> onerror_sym;
 static Persistent<String> data_sym;
 static Persistent<String> offset_sym;
+static Persistent<String> fd_sym;
+static Persistent<String> is_unix_sym;
 static Persistent<String> buckets_sym;
 
 
@@ -51,6 +57,8 @@ void IOWatcher::Initialize(Handle<Object> target) {
   onerror_sym = NODE_PSYMBOL("onerror");
   buckets_sym = NODE_PSYMBOL("buckets");
   offset_sym = NODE_PSYMBOL("offset");
+  fd_sym = NODE_PSYMBOL("fd");
+  is_unix_sym = NODE_PSYMBOL("isUnixSocket");
   data_sym = NODE_PSYMBOL("data");
 
 
@@ -247,6 +255,16 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     // Number of bytes we've stored in iov
     size_t to_write = 0;
 
+    bool unix_socket = false;
+    if (writer_node->Has(is_unix_sym) && writer_node->Get(is_unix_sym)->IsTrue()) {
+      unix_socket = true;
+    }
+
+    // Unix sockets don't like huge messages. TCP sockets do.
+    // TODO: handle EMSGSIZE after sendmsg().
+    size_t max_to_write = unix_socket ? 8*KB : 64*KB;
+
+    int fd_to_send = -1;
 
     // Offset is only as large as the first buffer of data. (See assert
     // below) Offset > 0 occurs when a previous writev could not entirely
@@ -262,7 +280,10 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     bool first = true;
     unsigned int bucket_index = 0;
     for (bucket_v = writer_node->Get(buckets_sym);
-         bucket_v->IsObject() && to_write < 64*KB && iovcnt < IOV_SIZE;
+         fd_to_send < 0 &&
+         bucket_v->IsObject() &&
+         to_write < max_to_write &&
+         iovcnt < IOV_SIZE;
          bucket_v = bucket->Get(next_sym), bucket_index++) {
       bucket = bucket_v->ToObject();
 
@@ -298,9 +319,44 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       }
       to_write += iov[iovcnt].iov_len;
       iovcnt++;
+
+      if (unix_socket && bucket->Has(fd_sym)) {
+        fd_to_send = bucket->Get(fd_sym)->Int32Value();
+        assert(fd_to_send >= 0);
+      }
     }
 
-    ssize_t written = writev(io->watcher_.fd, iov, iovcnt);
+    ssize_t written;
+
+    if (unix_socket) {
+      struct msghdr msg;
+      char scratch[64];
+
+      msg.msg_name = NULL;
+      msg.msg_namelen = 0;
+      msg.msg_iov = iov;
+      msg.msg_iovlen = iovcnt;
+      msg.msg_control = NULL; // void*
+      msg.msg_controllen = 0; // socklen_t
+      msg.msg_flags = 0; // int
+
+      if (fd_to_send >= 0) {
+        struct cmsghdr *cmsg;
+
+        msg.msg_control = (void *) scratch;
+        msg.msg_controllen = CMSG_LEN(sizeof(fd_to_send));
+
+        cmsg = CMSG_FIRSTHDR(&msg);
+        cmsg->cmsg_level = SOL_SOCKET;
+        cmsg->cmsg_type = SCM_RIGHTS;
+        cmsg->cmsg_len = msg.msg_controllen;
+        *(int*) CMSG_DATA(cmsg) = fd_to_send;
+      }
+
+      written = sendmsg(io->watcher_.fd, &msg, 0);
+    } else {
+      written = writev(io->watcher_.fd, iov, iovcnt);
+    }
 
     DEBUG_PRINT("iovcnt: %d, to_write: %ld, written: %ld",
                 iovcnt,
@@ -309,6 +365,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
 
     if (written < 0) {
       // Allow EAGAIN.
+      // TODO: handle EMSGSIZE after sendmsg().
       if (errno != EAGAIN) {
         // Emit error event
         if (writer_node->Has(onerror_sym)) {
