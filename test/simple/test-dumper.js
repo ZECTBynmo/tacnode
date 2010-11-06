@@ -59,6 +59,8 @@ function test (N, b, cb) {
       x = x.next;
     }
 
+    assert.equal(null, w.next);
+
     ncomplete++;
     if (cb) cb();
   });

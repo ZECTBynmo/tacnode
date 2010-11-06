@@ -488,6 +488,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
 
       // Drop the watcher_obj from the list.
       watcher_obj_last->Set(next_sym, watcher_obj->Get(next_sym));
+      watcher_obj->Set(next_sym, Null());
 
       // Emit drain event
       if (watcher_obj->Has(ondrain_sym)) {
