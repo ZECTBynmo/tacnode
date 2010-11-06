@@ -479,8 +479,11 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     // Otherwise we need to prepare the io_watcher to wait for the interface
     // to become writable again.
 
-    if (watcher_obj->Get(buckets_sym)->IsUndefined()) {
-      // Emptied the queue for this socket.
+    if (watcher_obj->Get(buckets_sym)->IsUndefined() == false) {
+      io->Start();
+      DEBUG_PRINT("Started watcher %d", io->watcher_.fd);
+    } else {
+      // Emptied the buckets queue for this socket.
       // Don't wait for it to become writable.
       io->Stop();
 
@@ -504,10 +507,6 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
           FatalException(try_catch);
         }
       }
-
-    } else {
-      io->Start();
-      DEBUG_PRINT("Started watcher %d", io->watcher_.fd);
     }
   }
 }
