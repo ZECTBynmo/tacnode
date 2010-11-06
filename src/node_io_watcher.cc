@@ -273,11 +273,11 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     if (watcher_obj->Has(offset_sym)) {
       offset = watcher_obj->Get(offset_sym)->Uint32Value();
     }
+    size_t first_offset = offset;
 
     // Loop over all the buckets for this particular socket.
     Local<Value> bucket_v;
     Local<Object> bucket;
-    bool first = true;
     unsigned int bucket_index = 0;
     for (bucket_v = watcher_obj->Get(buckets_sym);
          fd_to_send < 0 &&
@@ -308,17 +308,13 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
 
       size_t l = Buffer::Length(buf_object);
 
-      if (first /* ugly */) {
-        first = false; // ugly
-        assert(offset < l);
-        iov[iovcnt].iov_base = Buffer::Data(buf_object) + offset;
-        iov[iovcnt].iov_len = l - offset;
-      } else {
-        iov[iovcnt].iov_base = Buffer::Data(buf_object);
-        iov[iovcnt].iov_len = l;
-      }
+      assert(first_offset < l);
+      iov[iovcnt].iov_base = Buffer::Data(buf_object) + first_offset;
+      iov[iovcnt].iov_len = l - first_offset;
       to_write += iov[iovcnt].iov_len;
       iovcnt++;
+
+      first_offset = 0; // only the first buffer will be offset.
 
       if (unix_socket && bucket->Has(fd_sym)) {
         Local<Value> fd_v = bucket->Get(fd_sym);
@@ -394,7 +390,6 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     // what about written == 0 ?
 
     // Now drop the buckets that have been written.
-    first = true;
     bucket_index = 0;
 
     for (bucket_v = watcher_obj->Get(buckets_sym);
@@ -423,52 +418,31 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
       }
 
 
-      if (first) {
-        assert(bucket_len > offset);
-        first = false;
-        DEBUG_PRINT("[%ld] bucket_len: %ld, offset: %ld", bucket_index, bucket_len, offset);
-        // Only on the first bucket does the offset matter.
-        if (offset + written < bucket_len) {
-          // we have not written the entire first bucket
-          DEBUG_PRINT("[%ld] Only wrote part of the first buffer. "
-                      "setting watcher.offset = %ld",
-                      bucket_index,
-                      offset + written);
+      assert(bucket_len > offset);
+      DEBUG_PRINT("[%ld] bucket_len: %ld, offset: %ld", bucket_index, bucket_len, offset);
 
-          watcher_obj->Set(offset_sym,
-                          Integer::NewFromUnsigned(offset + written));
-          break;
-        } else {
-          DEBUG_PRINT("[%ld] wrote the whole first bucket. discarding.",
-                      bucket_index);
-          // We have written the entire bucket, discard it.
-          written -= bucket_len - offset;
-          watcher_obj->Set(buckets_sym, bucket->Get(next_sym));
+      // Only on the first bucket does is the offset > 0.
+      if (offset + written < bucket_len) {
+        // we have not written the entire bucket
+        DEBUG_PRINT("[%ld] Only wrote part of the buffer. "
+                    "setting watcher.offset = %ld",
+                    bucket_index,
+                    offset + written);
 
-          // Offset is now zero
-          watcher_obj->Set(offset_sym, Integer::NewFromUnsigned(0));
-        }
+        watcher_obj->Set(offset_sym,
+                         Integer::NewFromUnsigned(offset + written));
+        break;
       } else {
-        // not first
-        DEBUG_PRINT("[%ld] bucket_len: %ld", bucket_index, bucket_len);
+        DEBUG_PRINT("[%ld] wrote the whole bucket. discarding.",
+                    bucket_index);
+        // We have written the entire bucket, discard it.
+        written -= bucket_len - offset;
+        watcher_obj->Set(buckets_sym, bucket->Get(next_sym));
 
-        if (static_cast<size_t>(written) < bucket_len) {
-          // Didn't write the whole bucket.
-          DEBUG_PRINT("[%ld] Only wrote part of the buffer. "
-                      "setting watcher.offset = %ld",
-                      bucket_index,
-                      offset + written);
-
-          watcher_obj->Set(offset_sym,
-                          Integer::NewFromUnsigned(written));
-          break;
-        } else {
-          // Wrote the whole bucket, drop it.
-          DEBUG_PRINT("[%ld] wrote the whole bucket. discarding.", bucket_index);
-          written -= bucket_len;
-          watcher_obj->Set(buckets_sym, bucket->Get(next_sym));
-        }
+        // Offset is now zero
+        watcher_obj->Set(offset_sym, Integer::NewFromUnsigned(0));
       }
+      offset = 0; // the next bucket will have zero offset;
     }
 
     // Finished dumping the buckets.
