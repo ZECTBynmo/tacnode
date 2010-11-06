@@ -481,6 +481,8 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
           FatalException(try_catch);
         }
       }
+
+      watcher_obj = watcher_obj_last;
     }
   }
 }
