@@ -5,6 +5,10 @@ var net = require('net');
 
 var ncomplete = 0;
 
+
+
+
+
 function test (N, b, cb) {
   //console.trace();
   var expected = N * b.length;
@@ -54,31 +58,29 @@ function test (N, b, cb) {
   stream.on('close', function () {
     // check to make sure the watcher isn't in the dump queue.
     var x = IOWatcher.dumpQueue;
-    while (x.next) {
+    do {
       assert.ok(x !== w);
       x = x.next;
-    }
-
-    assert.equal(null, w.next);
+    } while (x !== IOWatcher.dumpQueue);
 
     ncomplete++;
     if (cb) cb();
   });
 
 
-  // Create out single 1mb buffer.
+  // Insert watcher into dumpQueue
+  w.next = IOWatcher.dumpQueue.next;
+  IOWatcher.dumpQueue.next = w;
 
-  // Fill the dumpQueue with N copies of that buffer.
-  var x = IOWatcher.dumpQueue;
-  while (x.next) {
-    x = x.next;
-  }
-  x.next = w;
+  if (N > 0) {
+    w.firstBucket = { data: b };
+    w.lastBucket = w.firstBucket;
 
-  var bucket = w.buckets = { data: b };
-
-  for (var i = 0; i < N-1; i++) {
-    bucket = bucket.next = { data: b };
+    for (var i = 0; i < N-1; i++) {
+      var bucket = { data: b };
+      w.lastBucket.next = bucket;
+      w.lastBucket = bucket;
+    }
   }
 }
 
@@ -97,15 +99,15 @@ function runTests (values) {
   go();
 }
 
-runTests([ [30, Buffer(1000)]
-         , [4, Buffer(10000)]
-         , [1, "hello world\n"]
-         , [50, Buffer(1024*1024)]
-         , [500, Buffer(40960+1)]
-         , [500, Buffer(40960-1)]
-         , [500, Buffer(40960)]
-         , [500, Buffer(1024*1024+1)]
-         , [50000, "hello world\n"]
+runTests([ [30, Buffer(1000)],
+           [4, Buffer(10000)],
+           [1, "hello world\n"],
+           [50, Buffer(1024*1024)],
+           [500, Buffer(40960+1)],
+           [500, Buffer(40960-1)],
+           [500, Buffer(40960)],
+           [500, Buffer(1024*1024+1)],
+           [50000, "hello world\n"]
          ]);
 
 

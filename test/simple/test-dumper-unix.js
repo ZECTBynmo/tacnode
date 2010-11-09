@@ -62,33 +62,33 @@ function test (N, b, cb) {
     assert.equal(fdsSent, fdsRecv);
     // check to make sure the watcher isn't in the dump queue.
     var x = IOWatcher.dumpQueue;
-    while (x.next) {
+    do {
       assert.ok(x !== w);
       x = x.next;
-    }
+    } while (x !== IOWatcher.dumpQueue);
 
     ncomplete++;
     if (cb) cb();
   });
 
 
-  // Create out single 1mb buffer.
+  // Insert watcher into dumpQueue
+  w.next = IOWatcher.dumpQueue.next;
+  IOWatcher.dumpQueue.next = w;
 
-  // Fill the dumpQueue with N copies of that buffer.
-  var x = IOWatcher.dumpQueue;
-  while (x.next) {
-    x = x.next;
-  }
-  x.next = w;
+  if (N > 0) {
+    w.firstBucket = { data: b };
+    w.lastBucket = w.firstBucket;
 
-  var bucket = w.buckets = { data: b };
-
-  for (var i = 0; i < N-1; i++) {
-    bucket = bucket.next = { data: b };
-    // Kind of randomly fill these buckets with fds.
-    if (fdsSent < 5 && i % 2 == 0) {
-      bucket.fd = 1; // send stdout
-      fdsSent++;
+    for (var i = 0; i < N-1; i++) {
+      var bucket = { data: b };
+      w.lastBucket.next = bucket;
+      w.lastBucket = bucket;
+      // Kind of randomly fill these buckets with fds.
+      if (fdsSent < 5 && i % 2 == 0) {
+        bucket.fd = 1; // send stdout
+        fdsSent++;
+      }
     }
   }
 }

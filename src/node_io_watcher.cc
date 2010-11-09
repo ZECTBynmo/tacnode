@@ -26,13 +26,15 @@ Persistent<FunctionTemplate> IOWatcher::constructor_template;
 Persistent<String> callback_symbol;
 
 static Persistent<String> next_sym;
+static Persistent<String> prev_sym;
 static Persistent<String> ondrain_sym;
 static Persistent<String> onerror_sym;
 static Persistent<String> data_sym;
 static Persistent<String> offset_sym;
 static Persistent<String> fd_sym;
 static Persistent<String> is_unix_socket_sym;
-static Persistent<String> buckets_sym;
+static Persistent<String> first_bucket_sym;
+static Persistent<String> last_bucket_sym;
 
 
 void IOWatcher::Initialize(Handle<Object> target) {
@@ -53,9 +55,11 @@ void IOWatcher::Initialize(Handle<Object> target) {
   callback_symbol = NODE_PSYMBOL("callback");
 
   next_sym = NODE_PSYMBOL("next");
+  prev_sym = NODE_PSYMBOL("prev");
   ondrain_sym = NODE_PSYMBOL("ondrain");
   onerror_sym = NODE_PSYMBOL("onerror");
-  buckets_sym = NODE_PSYMBOL("buckets");
+  first_bucket_sym = NODE_PSYMBOL("firstBucket");
+  last_bucket_sym = NODE_PSYMBOL("lastBucket");
   offset_sym = NODE_PSYMBOL("offset");
   fd_sym = NODE_PSYMBOL("fd");
   is_unix_socket_sym = NODE_PSYMBOL("isUnixSocket");
@@ -71,6 +75,8 @@ void IOWatcher::Initialize(Handle<Object> target) {
 
   dump_queue = Persistent<Object>::New(Object::New());
   io_watcher->Set(String::NewSymbol("dumpQueue"), dump_queue);
+  dump_queue->Set(next_sym, dump_queue);
+  dump_queue->Set(prev_sym, dump_queue);
 }
 
 
@@ -194,20 +200,20 @@ Handle<Value> IOWatcher::Set(const Arguments& args) {
  *
  * The structure looks like this:
  *
- * IOWatcher.dumpQueue -> W -> W -> W -> W
- *                        |    |    |    |
- *                        o    o    o    o
- *                        |    |         |
- *                        o    o         o
- *                             |         |
- *                             o         o
- *                                       |
- *                                       o
+ * IOWatcher . dumpQueue
+ *               |
+ *               watcher . buckets - b - b - b - b
+ *               |
+ *               watcher . buckets - b - b
+ *               |
+ *               watcher . buckets - b
+ *               |
+ *               watcher . buckets - b - b - b
  *
- * Where the 'W' nodes are IOWatcher instances (JavaScript objects)
- * associated with a particular socket. The 'o' nodes are little javascript
- * objects with a 'data' member. 'data' is either a string or buffer. E.G.
- *   o = { data: "hello world" }
+ * The 'b' nodes are little javascript objects buckets. Each has a 'data'
+ * member. 'data' is either a string or buffer. E.G.
+ *
+ *   b = { data: "hello world" }
  *
  */
 
@@ -221,9 +227,46 @@ Handle<Value> IOWatcher::Set(const Arguments& args) {
 #endif
 
 
-void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
+namespace linklist {
+
+  inline void Remove(Handle<Object> b) {
+    Local<Object> b_next = b->Get(next_sym)->ToObject();
+    Local<Object> b_prev = b->Get(prev_sym)->ToObject();
+
+    // b.next.prev = b.prev
+    b_next->Set(prev_sym, b_prev);
+
+    // b.prev.next = b.next
+    b_prev->Set(next_sym, b_next);
+  }
+
+
+  inline void Append(Handle<Object> list, Handle<Object> b) {
+    // b.next = list
+    b->Set(next_sym, list);
+
+    // b.prev = list.prev
+    b->Set(prev_sym, list);
+
+    // list.prev.next = b
+    Local<Object> list_prev = list->Get(prev_sym)->ToObject();
+    list_prev->Set(next_sym, b);
+
+    // list.prev = b
+    list->Set(prev_sym, b);
+  }
+
+
+  inline bool Empty(Handle<Object> list) {
+    // list.next === list
+    return list->Get(next_sym)->StrictEquals(list);
+  }
+}
+
+
+void IOWatcher::Dump(EV_P_ ev_prepare *w, int revents) {
   assert(revents == EV_PREPARE);
-  assert(watcher == &dumper);
+  assert(w == &dumper);
 
   HandleScope scope;
 
@@ -232,23 +275,34 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
 
   // Loop over all watchers in the dump queue. Each one stands for a socket
   // that has stuff to be written out.
-  Local<Value> watcher_obj_v;
-  Local<Object> watcher_obj;
-  Local<Object> watcher_obj_last = Local<Object>::New(dump_queue);
+  //
+  // There are several possible outcomes for each watcher.
+  // 1. All the buckets associated with the watcher are written out. In this
+  //    case the watcher is disabled; it is removed from the dump_queue.
+  // 2. Some of the data was written, but there still remains buckets. In
+  //    this case the watcher is enabled (i.e. we wait for the file
+  //    descriptor to become readable) and we remove it from the dump_queue.
+  //    When it becomes readable, we'll get a callback in net.js and add it
+  //    again to the dump_queue
+  // 3. writev returns EAGAIN. This is the same as case 2.
+  //
+  // In any case, the dump queue should be empty when we exit this function.
+  // (See the assert at the end of the outermost for loop.
+  Local<Value> watcher_v;
+  Local<Object> watcher;
 
-  for (watcher_obj_v = dump_queue->Get(next_sym);
-       watcher_obj_v->IsObject();
-       watcher_obj_v = watcher_obj->Get(next_sym),
-       watcher_obj_last = watcher_obj) {
+  for (watcher_v = dump_queue->Get(next_sym);
+       watcher_v->IsObject();
+       dump_queue->Set(next_sym, (watcher_v = watcher->Get(next_sym)))) {
+    watcher = watcher_v->ToObject();
 
-    watcher_obj = watcher_obj_v->ToObject();
+    IOWatcher *io = ObjectWrap::Unwrap<IOWatcher>(watcher);
 
-    IOWatcher *io = ObjectWrap::Unwrap<IOWatcher>(watcher_obj);
     // stats (just for fun)
     io->dumps_++;
     io->last_dump_ = ev_now(EV_DEFAULT_UC);
 
-    DEBUG_PRINT("Dumping %d", io->watcher_.fd);
+    DEBUG_PRINT("dumping fd %d", io->watcher_.fd);
 
     // Number of items we've stored in iov
     int iovcnt = 0;
@@ -256,7 +310,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     size_t to_write = 0;
 
     bool unix_socket = false;
-    if (watcher_obj->Has(is_unix_socket_sym) && watcher_obj->Get(is_unix_socket_sym)->IsTrue()) {
+    if (watcher->Has(is_unix_socket_sym) && watcher->Get(is_unix_socket_sym)->IsTrue()) {
       unix_socket = true;
     }
 
@@ -270,21 +324,44 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     // below) Offset > 0 occurs when a previous writev could not entirely
     // drain a bucket.
     size_t offset = 0;
-    if (watcher_obj->Has(offset_sym)) {
-      offset = watcher_obj->Get(offset_sym)->Uint32Value();
+    if (watcher->Has(offset_sym)) {
+      offset = watcher->Get(offset_sym)->Uint32Value();
     }
     size_t first_offset = offset;
 
-    // Loop over all the buckets for this particular socket.
+    // Note that watcher.buckets points to a linked-list
+    // of buckets.
+    Local<Value> first_bucket_v = watcher->Get(first_bucket_sym);
+    if (!first_bucket_v->IsObject()) {
+      // It is possible that someone did
+      //
+      //   socket.write("data"); socket.destroy();
+      //
+      // In which case we'll have a watcher in the dump_queue which is
+      // no longer associated with a socket. In this case we just
+      // skip it.
+      assert(!watcher->Get(last_bucket_sym)->IsObject());
+      continue;
+    }
+
+    // Loop over all the buckets for this particular watcher/socket in order
+    // to fill iov.
     Local<Value> bucket_v;
     Local<Object> bucket;
     unsigned int bucket_index = 0;
-    for (bucket_v = watcher_obj->Get(buckets_sym);
-         fd_to_send < 0 &&
-         bucket_v->IsObject() &&
-         to_write < max_to_write &&
-         iovcnt < IOV_SIZE;
+
+    for (bucket_v = first_bucket_v;
+           // Break if we have an FD to send.
+           // sendmsg can only handle one FD at a time.
+           fd_to_send < 0 &&
+           // break if we've hit the end
+           !bucket_v->IsObject() &&
+           // break if iov contains a lot of data
+           to_write < max_to_write &&
+           // break if iov is running out of space
+           iovcnt < IOV_SIZE;
          bucket_v = bucket->Get(next_sym), bucket_index++) {
+      assert(bucket_v->IsObject());
       bucket = bucket_v->ToObject();
 
       Local<Value> data_v = bucket->Get(data_sym);
@@ -366,9 +443,11 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     if (written < 0) {
       // Allow EAGAIN.
       // TODO: handle EMSGSIZE after sendmsg().
-      if (errno != EAGAIN) {
+      if (errno == EAGAIN) {
+        io->Start();
+      } else {
         // Emit error event
-        if (watcher_obj->Has(onerror_sym)) {
+        if (watcher->Has(onerror_sym)) {
           Local<Value> callback_v = io->handle_->Get(onerror_sym);
           assert(callback_v->IsFunction());
           Local<Function> callback = Local<Function>::Cast(callback_v);
@@ -384,6 +463,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
           }
         }
       }
+      // Continue with the next watcher.
       continue;
     }
 
@@ -392,11 +472,16 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     // Now drop the buckets that have been written.
     bucket_index = 0;
 
-    for (bucket_v = watcher_obj->Get(buckets_sym);
-         written > 0 && bucket_v->IsObject();
-         bucket_v = bucket->Get(next_sym), bucket_index++) {
+    while (written > 0) {
+      bucket_v = watcher->Get(first_bucket_sym);
+      if (!bucket_v->IsObject()) {
+        // No more buckets in the queue. Make sure the last_bucket_sym is
+        // updated and then go to the next watcher.
+        watcher->Set(last_bucket_sym, Null());
+        break;
+      }
+
       bucket = bucket_v->ToObject();
-      assert(written > 0);
 
       Local<Value> data_v = bucket->Get(data_sym);
       assert(!data_v.IsEmpty());
@@ -429,20 +514,24 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
                     bucket_index,
                     offset + written);
 
-        watcher_obj->Set(offset_sym,
+        watcher->Set(offset_sym,
                          Integer::NewFromUnsigned(offset + written));
         break;
       } else {
         DEBUG_PRINT("[%ld] wrote the whole bucket. discarding.",
                     bucket_index);
-        // We have written the entire bucket, discard it.
+
         written -= bucket_len - offset;
-        watcher_obj->Set(buckets_sym, bucket->Get(next_sym));
 
         // Offset is now zero
-        watcher_obj->Set(offset_sym, Integer::NewFromUnsigned(0));
+        watcher->Set(offset_sym, Integer::NewFromUnsigned(0));
       }
+
       offset = 0; // the next bucket will have zero offset;
+      bucket_index++;
+
+      // unshift
+      watcher->Set(first_bucket_sym, bucket->Get(next_sym));
     }
 
     // Finished dumping the buckets.
@@ -453,22 +542,20 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
     // Otherwise we need to prepare the io_watcher to wait for the interface
     // to become writable again.
 
-    if (watcher_obj->Get(buckets_sym)->IsUndefined() == false) {
+    if (watcher->Get(first_bucket_sym)->IsObject()) {
+      // Still have buckets to be written. Wait for fd to become writable.
       io->Start();
+
       DEBUG_PRINT("Started watcher %d", io->watcher_.fd);
     } else {
-      // Emptied the buckets queue for this socket.
-      // Don't wait for it to become writable.
+      // Emptied the buckets queue for this socket.  Don't wait for it to
+      // become writable.
       io->Stop();
 
       DEBUG_PRINT("Stop watcher %d", io->watcher_.fd);
 
-      // Drop the watcher_obj from the list.
-      watcher_obj_last->Set(next_sym, watcher_obj->Get(next_sym));
-      watcher_obj->Set(next_sym, Null());
-
       // Emit drain event
-      if (watcher_obj->Has(ondrain_sym)) {
+      if (watcher->Has(ondrain_sym)) {
         Local<Value> callback_v = io->handle_->Get(ondrain_sym);
         assert(callback_v->IsFunction());
         Local<Function> callback = Local<Function>::Cast(callback_v);
@@ -481,10 +568,11 @@ void IOWatcher::Dump(EV_P_ ev_prepare *watcher, int revents) {
           FatalException(try_catch);
         }
       }
-
-      watcher_obj = watcher_obj_last;
     }
   }
+
+  // Assert that the dump_queue is empty.
+  assert(!dump_queue->Get(next_sym)->IsObject());
 }
 
 
