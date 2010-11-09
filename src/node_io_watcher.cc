@@ -75,8 +75,6 @@ void IOWatcher::Initialize(Handle<Object> target) {
 
   dump_queue = Persistent<Object>::New(Object::New());
   io_watcher->Set(String::NewSymbol("dumpQueue"), dump_queue);
-  dump_queue->Set(next_sym, dump_queue);
-  dump_queue->Set(prev_sym, dump_queue);
 }
 
 
@@ -227,43 +225,6 @@ Handle<Value> IOWatcher::Set(const Arguments& args) {
 #endif
 
 
-namespace linklist {
-
-  inline void Remove(Handle<Object> b) {
-    Local<Object> b_next = b->Get(next_sym)->ToObject();
-    Local<Object> b_prev = b->Get(prev_sym)->ToObject();
-
-    // b.next.prev = b.prev
-    b_next->Set(prev_sym, b_prev);
-
-    // b.prev.next = b.next
-    b_prev->Set(next_sym, b_next);
-  }
-
-
-  inline void Append(Handle<Object> list, Handle<Object> b) {
-    // b.next = list
-    b->Set(next_sym, list);
-
-    // b.prev = list.prev
-    b->Set(prev_sym, list);
-
-    // list.prev.next = b
-    Local<Object> list_prev = list->Get(prev_sym)->ToObject();
-    list_prev->Set(next_sym, b);
-
-    // list.prev = b
-    list->Set(prev_sym, b);
-  }
-
-
-  inline bool Empty(Handle<Object> list) {
-    // list.next === list
-    return list->Get(next_sym)->StrictEquals(list);
-  }
-}
-
-
 void IOWatcher::Dump(EV_P_ ev_prepare *w, int revents) {
   assert(revents == EV_PREPARE);
   assert(w == &dumper);
@@ -329,20 +290,6 @@ void IOWatcher::Dump(EV_P_ ev_prepare *w, int revents) {
     }
     size_t first_offset = offset;
 
-    // Note that watcher.buckets points to a linked-list
-    // of buckets.
-    Local<Value> first_bucket_v = watcher->Get(first_bucket_sym);
-    if (!first_bucket_v->IsObject()) {
-      // It is possible that someone did
-      //
-      //   socket.write("data"); socket.destroy();
-      //
-      // In which case we'll have a watcher in the dump_queue which is
-      // no longer associated with a socket. In this case we just
-      // skip it.
-      assert(!watcher->Get(last_bucket_sym)->IsObject());
-      continue;
-    }
 
     // Loop over all the buckets for this particular watcher/socket in order
     // to fill iov.
@@ -350,12 +297,12 @@ void IOWatcher::Dump(EV_P_ ev_prepare *w, int revents) {
     Local<Object> bucket;
     unsigned int bucket_index = 0;
 
-    for (bucket_v = first_bucket_v;
+    for (bucket_v = watcher->Get(first_bucket_sym);
            // Break if we have an FD to send.
            // sendmsg can only handle one FD at a time.
            fd_to_send < 0 &&
            // break if we've hit the end
-           !bucket_v->IsObject() &&
+           bucket_v->IsObject() &&
            // break if iov contains a lot of data
            to_write < max_to_write &&
            // break if iov is running out of space
@@ -402,6 +349,8 @@ void IOWatcher::Dump(EV_P_ ev_prepare *w, int revents) {
         }
       }
     }
+
+    if (to_write == 0) continue;
 
     ssize_t written;
 

@@ -18,8 +18,15 @@ function test (N, b, cb) {
   // Use writev/dumper to send data down the one of the sockets, fds[1].
   // This requires a IOWatcher.
   var w = new IOWatcher();
+  w.set(fds[1], false, true);
   w.isUnixSocket = true;
-  w.set(fds[1], false, false);
+
+  w.callback = function (readable, writable) {
+    assert.ok(!readable && writable); // not really important.
+    // Insert watcher into dumpQueue
+    w.next = IOWatcher.dumpQueue.next;
+    IOWatcher.dumpQueue.next = w;
+  }
 
   var ndrain = 0;
   w.ondrain = function () {
@@ -61,11 +68,9 @@ function test (N, b, cb) {
   stream.on('close', function () {
     assert.equal(fdsSent, fdsRecv);
     // check to make sure the watcher isn't in the dump queue.
-    var x = IOWatcher.dumpQueue;
-    do {
+    for (var x = IOWatcher.dumpQueue; x; x = x.next) {
       assert.ok(x !== w);
-      x = x.next;
-    } while (x !== IOWatcher.dumpQueue);
+    }
 
     ncomplete++;
     if (cb) cb();
@@ -76,19 +81,17 @@ function test (N, b, cb) {
   w.next = IOWatcher.dumpQueue.next;
   IOWatcher.dumpQueue.next = w;
 
-  if (N > 0) {
-    w.firstBucket = { data: b };
-    w.lastBucket = w.firstBucket;
+  w.firstBucket = { data: b };
+  w.lastBucket = w.firstBucket;
 
-    for (var i = 0; i < N-1; i++) {
-      var bucket = { data: b };
-      w.lastBucket.next = bucket;
-      w.lastBucket = bucket;
-      // Kind of randomly fill these buckets with fds.
-      if (fdsSent < 5 && i % 2 == 0) {
-        bucket.fd = 1; // send stdout
-        fdsSent++;
-      }
+  for (var i = 0; i < N-1; i++) {
+    var bucket = { data: b };
+    w.lastBucket.next = bucket;
+    w.lastBucket = bucket;
+    // Kind of randomly fill these buckets with fds.
+    if (fdsSent < 5 && i % 2 == 0) {
+      bucket.fd = 1; // send stdout
+      fdsSent++;
     }
   }
 }

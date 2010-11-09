@@ -16,11 +16,19 @@ function test (N, b, cb) {
 
   // Create a pipe
   var fds = process.binding('net').pipe();
+  console.log("fds == %j", fds);
 
   // Use writev/dumper to send data down the write end of the pipe, fds[1].
   // This requires a IOWatcher.
   var w = new IOWatcher();
-  w.set(fds[1], false, false);
+  w.set(fds[1], false, true);
+
+  w.callback = function (readable, writable) {
+    assert.ok(!readable && writable); // not really important.
+    // Insert watcher into dumpQueue
+    w.next = IOWatcher.dumpQueue.next;
+    IOWatcher.dumpQueue.next = w;
+  }
 
   var ndrain = 0;
   w.ondrain = function () {
@@ -57,11 +65,9 @@ function test (N, b, cb) {
 
   stream.on('close', function () {
     // check to make sure the watcher isn't in the dump queue.
-    var x = IOWatcher.dumpQueue;
-    do {
+    for (var x = IOWatcher.dumpQueue; x; x = x.next) {
       assert.ok(x !== w);
-      x = x.next;
-    } while (x !== IOWatcher.dumpQueue);
+    }
 
     ncomplete++;
     if (cb) cb();
@@ -72,15 +78,14 @@ function test (N, b, cb) {
   w.next = IOWatcher.dumpQueue.next;
   IOWatcher.dumpQueue.next = w;
 
-  if (N > 0) {
-    w.firstBucket = { data: b };
-    w.lastBucket = w.firstBucket;
+  w.firstBucket = { data: b };
+  w.lastBucket = w.firstBucket;
 
-    for (var i = 0; i < N-1; i++) {
-      var bucket = { data: b };
-      w.lastBucket.next = bucket;
-      w.lastBucket = bucket;
-    }
+  for (var i = 0; i < N-1; i++) {
+    var bucket = { data: b };
+    assert.ok(!w.lastBucket.next);
+    w.lastBucket.next = bucket;
+    w.lastBucket = bucket;
   }
 }
 
