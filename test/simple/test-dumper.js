@@ -1,6 +1,7 @@
 var assert =require('assert');
 var IOWatcher = process.binding('io_watcher').IOWatcher;
 var errnoException = process.binding('net').errnoException;
+var close = process.binding('net').close;
 var net = require('net');
 
 var ncomplete = 0;
@@ -57,9 +58,8 @@ function test (N, b, cb) {
       assert.ok(nread === expected);
       assert.equal(1, ndrain);
       assert.equal(0, nerror);
-      w.stop();
       console.error("done. wrote %d bytes\n", nread);
-      process.binding('net').close(fds[1]);
+      close(fds[1]);
     }
   });
 
@@ -68,6 +68,7 @@ function test (N, b, cb) {
     for (var x = IOWatcher.dumpQueue; x; x = x.next) {
       assert.ok(x !== w);
     }
+    assert.equal(null, w.next);
 
     ncomplete++;
     if (cb) cb();

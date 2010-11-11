@@ -254,7 +254,8 @@ void IOWatcher::Dump(EV_P_ ev_prepare *w, int revents) {
 
   for (watcher_v = dump_queue->Get(next_sym);
        watcher_v->IsObject();
-       dump_queue->Set(next_sym, (watcher_v = watcher->Get(next_sym)))) {
+       dump_queue->Set(next_sym, (watcher_v = watcher->Get(next_sym))),
+       watcher->Set(next_sym, Null())) {
     watcher = watcher_v->ToObject();
 
     IOWatcher *io = ObjectWrap::Unwrap<IOWatcher>(watcher);
