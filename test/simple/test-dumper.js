@@ -69,6 +69,9 @@ function test (N, b, cb) {
       assert.ok(x !== w);
     }
     assert.equal(null, w.next);
+    // completely flushed
+    assert.ok(!w.firstBucket);
+    assert.ok(!w.lastBucket);
 
     ncomplete++;
     if (cb) cb();
@@ -105,7 +108,8 @@ function runTests (values) {
   go();
 }
 
-runTests([ [30, Buffer(1000)],
+runTests([ [3, Buffer(1000)],
+           [30, Buffer(1000)],
            [4, Buffer(10000)],
            [1, "hello world\n"],
            [50, Buffer(1024*1024)],

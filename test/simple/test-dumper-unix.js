@@ -72,6 +72,9 @@ function test (N, b, cb) {
       assert.ok(x !== w);
     }
     assert.equal(null, w.next);
+    // completely flushed
+    assert.ok(!w.firstBucket);
+    assert.ok(!w.lastBucket);
 
     ncomplete++;
     if (cb) cb();

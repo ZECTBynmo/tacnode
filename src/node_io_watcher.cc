@@ -498,6 +498,10 @@ void IOWatcher::Dump(EV_P_ ev_prepare *w, int revents) {
 
       DEBUG_PRINT("Started watcher %d", io->watcher_.fd);
     } else {
+      // No more buckets in the queue. Make sure the last_bucket_sym is
+      // updated and then go to the next watcher.
+      watcher->Set(last_bucket_sym, Null());
+
       // Emptied the buckets queue for this socket.  Don't wait for it to
       // become writable.
       io->Stop();
