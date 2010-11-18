@@ -8,6 +8,7 @@
 
 #include <sys/uio.h> /* writev */
 #include <errno.h>
+#include <limits.h> /* IOV_MAX */
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -246,8 +247,7 @@ void IOWatcher::Dump(EV_P_ ev_prepare *w, int revents) {
 void IOWatcher::Dump() {
   HandleScope scope;
 
-#define IOV_SIZE 10000
-  static struct iovec iov[IOV_SIZE];
+  static struct iovec iov[IOV_MAX];
 
   // Loop over all watchers in the dump queue. Each one stands for a socket
   // that has stuff to be written out.
@@ -322,7 +322,7 @@ void IOWatcher::Dump() {
            // break if iov contains a lot of data
            to_write < max_to_write &&
            // break if iov is running out of space
-           iovcnt < IOV_SIZE;
+           iovcnt < IOV_MAX;
          bucket_v = bucket->Get(next_sym), bucket_index++) {
       assert(bucket_v->IsObject());
       bucket = bucket_v->ToObject();
