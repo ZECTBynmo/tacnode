@@ -729,32 +729,32 @@ static Handle<Value> RecvMsg(const Arguments& args) {
 static Handle<Value> Write(const Arguments& args) {
   HandleScope scope;
 
-  if (args.Length() < 4) {
-    return ThrowException(Exception::TypeError(
-          String::New("Takes 4 parameters")));
-  }
-
   FD_ARG(args[0])
 
   ssize_t written; 
 
   if (args[1]->IsString()) {
+    assert(args.Length() == 3);
+
     Local<String> string = args[1]->ToString();
     static struct iovec iov[IOV_MAX];
 
     written =
       string->WritevAscii(0, (struct String::iovec*)(iov), IOV_MAX);
 
-    // Count the number of vectors we got.
-    int iovfill = 0;
-    size_t got = 0;
-    while (got < written) {
-      got += iov[iovfill++].iov_len;
+    if (written > 0) {
+      // Count the number of vectors we got.
+      int iovfill = 0;
+      size_t got = 0;
+      while (got < written) {
+        got += iov[iovfill++].iov_len;
+      }
+      
+      written = writev(fd, iov, iovfill);
     }
-    
-    written = writev(fd, iov, iovfill);
 
   } else {
+    assert(args.Length() == 4);
     assert(Buffer::HasInstance(args[1]));
 
     Local<Object> buffer_obj = args[1]->ToObject();
