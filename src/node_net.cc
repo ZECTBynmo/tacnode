@@ -14,6 +14,9 @@
 #include <fcntl.h>
 #include <arpa/inet.h> /* inet_pton */
 
+#include <limits.h> /* IOV_MAX */
+#include <sys/uio.h> /* writev */
+
 #include <netdb.h>
 
 #include <netinet/in.h>
@@ -733,28 +736,46 @@ static Handle<Value> Write(const Arguments& args) {
 
   FD_ARG(args[0])
 
-  if (!Buffer::HasInstance(args[1])) {
-    return ThrowException(Exception::TypeError(
-          String::New("Second argument should be a buffer")));
+  ssize_t written; 
+
+  if (args[1]->IsString()) {
+    Local<String> string = args[1]->ToString();
+    static struct iovec iov[IOV_MAX];
+
+    written =
+      string->WritevAscii(0, (struct String::iovec*)(iov), IOV_MAX);
+
+    // Count the number of vectors we got.
+    int iovfill = 0;
+    size_t got = 0;
+    while (got < written) {
+      got += iov[iovfill++].iov_len;
+    }
+    
+    written = writev(fd, iov, iovfill);
+
+  } else {
+    assert(Buffer::HasInstance(args[1]));
+
+    Local<Object> buffer_obj = args[1]->ToObject();
+    char *buffer_data = Buffer::Data(buffer_obj);
+    size_t buffer_length = Buffer::Length(buffer_obj);
+
+    size_t off = args[2]->Int32Value();
+    if (off >= buffer_length) {
+      return ThrowException(Exception::Error(
+            String::New("Offset is out of bounds")));
+    }
+
+    size_t len = args[3]->Int32Value();
+    if (off + len > buffer_length) {
+      return ThrowException(Exception::Error(
+            String::New("Length is extends beyond buffer")));
+    }
+
+    written = write(fd, buffer_data + off, len);
   }
 
-  Local<Object> buffer_obj = args[1]->ToObject();
-  char *buffer_data = Buffer::Data(buffer_obj);
-  size_t buffer_length = Buffer::Length(buffer_obj);
-
-  size_t off = args[2]->Int32Value();
-  if (off >= buffer_length) {
-    return ThrowException(Exception::Error(
-          String::New("Offset is out of bounds")));
-  }
-
-  size_t len = args[3]->Int32Value();
-  if (off + len > buffer_length) {
-    return ThrowException(Exception::Error(
-          String::New("Length is extends beyond buffer")));
-  }
-
-  ssize_t written = write(fd, buffer_data + off, len);
 
   if (written < 0) {
     if (errno == EAGAIN || errno == EINTR) {

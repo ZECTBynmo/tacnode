@@ -3725,6 +3725,16 @@ bool v8::String::CanMakeExternal() {
 }
 
 
+size_t v8::String::WritevAscii(int offset,
+                               struct v8::String::iovec *iov,
+                               int iovcnt) {
+  if (IsDeadCheck("v8::String::WritevAscii()")) return false;
+  i::Handle<i::String> obj = Utils::OpenHandle(this);
+  int iovfill = 0;
+  return (*obj)->WritevAscii(offset, iov, iovcnt, iovfill);
+}
+
+
 Local<v8::Object> v8::Object::New() {
   EnsureInitialized("v8::Object::New()");
   LOG_API("Object::New");

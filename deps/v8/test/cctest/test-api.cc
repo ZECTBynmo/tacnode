@@ -743,6 +743,124 @@ THREADED_TEST(StringConcat) {
 }
 
 
+THREADED_TEST(StringPointersFlat) {
+  {
+    v8::HandleScope scope;
+    LocalContext env;
+    const char* hello_world = "hello world";
+    Local<String> s = v8_str(hello_world);
+
+    String::iovec iov[2];
+    size_t written = s->WritevAscii(0, iov, 2);
+
+    CHECK_EQ(11, iov[0].iov_len);
+    CHECK_EQ(11, written);
+    CHECK_EQ('h', iov[0].iov_base[0]);
+    CHECK_EQ('e', iov[0].iov_base[1]);
+    CHECK_EQ('l', iov[0].iov_base[2]);
+    CHECK_EQ('l', iov[0].iov_base[3]);
+    CHECK_EQ('o', iov[0].iov_base[4]);
+    CHECK_EQ(' ', iov[0].iov_base[5]);
+    CHECK_EQ('w', iov[0].iov_base[6]);
+    CHECK_EQ('o', iov[0].iov_base[7]);
+    CHECK_EQ('r', iov[0].iov_base[8]);
+    CHECK_EQ('l', iov[0].iov_base[9]);
+    CHECK_EQ('d', iov[0].iov_base[10]);
+  }
+  i::CompilationCache::Clear();
+  i::Heap::CollectAllGarbage(false);
+  i::Heap::CollectAllGarbage(false);
+}
+
+
+THREADED_TEST(StringPointersCons) {
+  {
+    v8::HandleScope scope;
+    LocalContext env;
+
+    const char* hello = "hello hello hello hello hello hello ";
+    const char* world = "world world world world world world world world ";
+
+
+    Local<String> s = v8_str(hello);
+    Local<String> t = v8_str(world);
+
+    Local<String> c = v8::String::Concat(s,t);
+
+    // This isn't part of the actual test. Just want to make sure that this
+    // is actually a cons string. If the following test fails, maybe
+    // increase the size of s and t.
+    i::Handle<i::String> str = v8::Utils::OpenHandle(*c);
+    CHECK(i::StringShape(*str).IsCons());
+
+
+    String::iovec iov[3];
+    int written = c->WritevAscii(0, iov, 3);
+
+    CHECK_EQ(strlen(hello) + strlen(world), written);
+
+    CHECK_EQ(strlen(hello), (int)iov[0].iov_len);
+    for (unsigned int i = 0; i < strlen(hello); i++) {
+      CHECK_EQ(hello[i], iov[0].iov_base[i]);
+    }
+
+    CHECK_EQ(strlen(world), (int)iov[1].iov_len);
+    for (unsigned int i = 0; i < strlen(world); i++) {
+      CHECK_EQ(world[i], iov[1].iov_base[i]);
+    }
+  }
+  i::CompilationCache::Clear();
+  i::Heap::CollectAllGarbage(false);
+  i::Heap::CollectAllGarbage(false);
+}
+
+
+THREADED_TEST(StringPointersCons2) {
+  {
+    v8::HandleScope scope;
+    LocalContext env;
+
+    const char* hello = "hello hello hello hello hello hello ";
+    const char* world = "world world world world world world world world ";
+
+    Local<String> s = v8_str(hello);
+    Local<String> t = v8_str(world);
+    Local<String> c = v8::String::Concat(v8::String::Concat(s,t),
+                                         v8::String::Concat(v8::String::Concat(s,t), t));
+
+    // This isn't part of the actual test. Just want to make sure that this
+    // is actually a cons string. If the following test fails, maybe
+    // increase the size of s and t.
+    i::Handle<i::String> str = v8::Utils::OpenHandle(*c);
+    CHECK(i::StringShape(*str).IsCons());
+
+
+    String::iovec iov[10];
+    int written = c->WritevAscii(0, iov, 10);
+
+    CHECK_EQ(2 * strlen(hello) + 3 * strlen(world), written);
+
+    CHECK_EQ(strlen(hello), (int)iov[0].iov_len);
+    CHECK_EQ('h', iov[0].iov_base[0]);
+
+    CHECK_EQ(strlen(world), (int)iov[1].iov_len);
+    CHECK_EQ('w', iov[1].iov_base[0]);
+
+    CHECK_EQ(strlen(hello), (int)iov[2].iov_len);
+    CHECK_EQ('h', iov[2].iov_base[0]);
+
+    CHECK_EQ(strlen(world), (int)iov[3].iov_len);
+    CHECK_EQ('w', iov[3].iov_base[0]);
+
+    CHECK_EQ(strlen(world), (int)iov[4].iov_len);
+    CHECK_EQ('w', iov[4].iov_base[0]);
+  }
+  i::CompilationCache::Clear();
+  i::Heap::CollectAllGarbage(false);
+  i::Heap::CollectAllGarbage(false);
+}
+
+
 THREADED_TEST(GlobalProperties) {
   v8::HandleScope scope;
   LocalContext env;

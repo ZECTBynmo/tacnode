@@ -4163,6 +4163,71 @@ int String::Utf8Length() {
 }
 
 
+size_t String::WritevAscii(int offset,
+                           struct v8::String::iovec *iov,
+                           int iovcnt,
+                           int& iovfill) {
+  ASSERT(iovfill <= iovcnt);
+  if (iovfill == iovcnt) return 0;
+  if (this->length() == 0) return 0;
+
+  char *start;
+
+  switch (StringShape(this).representation_tag()) {
+    case kConsStringTag: {
+      // TODO: keep track of how far we recurse, if it's very deep, pull out
+      // and flatten.
+      ConsString* cons = ConsString::cast(this);
+      String* first = cons->first();
+      String* second = cons->second();
+
+      size_t first_write = 0;
+      if (offset < first->length() && first->length()) {
+        // Need to take the first into consideration.
+        first_write = first->WritevAscii(offset, iov, iovcnt, iovfill);
+
+        // Bail out if we haven't got the whole string.
+        if ((int)first_write != first->length()) {
+          ASSERT((int)first_write < first->length());
+          return first_write;
+        }
+
+        ASSERT(first_write != 0);
+        offset = 0;
+      } else {
+        offset -= first->length();
+      }
+
+      size_t second_write = second->WritevAscii(offset, iov, iovcnt, iovfill);
+      return first_write + second_write;
+    }
+
+    case kSeqStringTag: {
+      if (this->IsTwoByteRepresentation()) return 0;
+      start = SeqAsciiString::cast(this)->GetChars();
+      break;
+    }
+
+    case kExternalStringTag: {
+      if (this->IsTwoByteRepresentation()) return 0;
+      // const_cast ?
+      start = (char*)ExternalAsciiString::cast(this)->resource()->data();
+      break;
+    }
+
+    default:
+      ASSERT(0);
+      return 0;
+  }
+
+  ASSERT(!this->IsTwoByteRepresentation());
+
+  iov[iovfill].iov_base = start + offset;
+  iov[iovfill].iov_len = this->length() - offset;
+  return iov[iovfill++].iov_len;
+}
+
+
 Vector<const char> String::ToAsciiVector() {
   ASSERT(IsAsciiRepresentation());
   ASSERT(IsFlat());

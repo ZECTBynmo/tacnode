@@ -4557,6 +4557,11 @@ class String: public HeapObject {
   Vector<const char> ToAsciiVector();
   Vector<const uc16> ToUC16Vector();
 
+  size_t WritevAscii(int offset,
+                     struct v8::String::iovec *iov,
+                     int iovcnt,
+                     int& iovfill);
+
   // Mark the string as an undetectable object. It only applies to
   // ascii and two byte string types.
   bool MarkAsUndetectable();

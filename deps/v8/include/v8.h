@@ -1220,6 +1220,32 @@ class String : public Primitive {
    */
   V8EXPORT bool CanMakeExternal();
 
+  /**
+   * String::WritevAscii()
+   *
+   * Fills the suppied vectors, iov, with the addresses of the string
+   * in the V8 heap. This is intended to be used to immediately flush the
+   * data to socket. These pointers will become invalid the next time V8 is
+   * entered, so use this function with exterme care.
+   *
+   * This method will only return Ascii data. It returns the number of ascii
+   * characters (= bytes) written into iov. When the method encounters a
+   * high character (a unicode symbol) it bails out. The user will then need
+   * to use String::WriteUtf8 to encode the rest of the string and get it
+   * out of the heap.
+   *
+   * \param offset  the number of characters into the string to start
+   * \param iov  an empty array of pointer vectors to be filled with data.
+   * \param iovcnt  the size of the passed array.
+   * \returns the number of characters of the string represented in iov.
+   */
+  struct iovec {
+    char *iov_base; // Base address.
+    size_t iov_len; // Length.
+  };
+
+  V8EXPORT size_t WritevAscii(int offset, struct iovec *iov, int iovcnt);
+
   /** Creates an undetectable string from the supplied ascii or utf-8 data.*/
   V8EXPORT static Local<String> NewUndetectable(const char* data,
                                                 int length = -1);
