@@ -737,10 +737,10 @@ static Handle<Value> Write(const Arguments& args) {
     assert(args.Length() == 3);
 
     Local<String> string = args[1]->ToString();
-    static struct iovec iov[IOV_MAX];
+    static struct iovec iov[20];
 
     written =
-      string->WritevAscii(0, (struct String::iovec*)(iov), IOV_MAX);
+      string->WritevAscii(0, (struct String::iovec*)(iov), 20);
 
     if (written > 0) {
       // Count the number of vectors we got.
