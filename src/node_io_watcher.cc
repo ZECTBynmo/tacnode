@@ -84,6 +84,9 @@ static Handle<Value> IOAlloc(const Arguments& args) {
 static Handle<Value> IOFree(const Arguments& args) {
   HandleScope scope;
   ev_io *io = JSToAddress<ev_io>(args[0]);
+  Persistent<Object>* obj_p = static_cast<Persistent<Object>*>(io->data);
+  obj_p->Dispose();
+  delete obj_p;
   delete io;
   return Undefined();
 }
