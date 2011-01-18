@@ -87,6 +87,9 @@ static Handle<Value> IOFree(const Arguments& args) {
   Persistent<Object>* obj_p = static_cast<Persistent<Object>*>(io->data);
   obj_p->Dispose();
   delete obj_p;
+
+  ev_io_stop(io);
+
   delete io;
   return Undefined();
 }
