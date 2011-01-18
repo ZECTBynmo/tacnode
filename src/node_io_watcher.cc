@@ -19,16 +19,24 @@ Persistent<String> callback_symbol;
 Persistent<String> on_io_symbol;
 
 
-static inline Local<Integer> AddressToJS(void* address) {
+static inline Local<Value> AddressToJS(void* address) {
   intptr_t diff = (intptr_t)address - (intptr_t)&etext;
-  assert(diff > 0 && diff < 0x7FFFFFFF);
-  return Integer::New(diff);
+  if (diff < 0x7FFFFFFF && diff > 0) {
+    return Integer::New(diff);
+  } else {
+    return External::New(address);
+  }
 }
 
 
 template <class T>
 static inline T* JSToAddress(Local<Value> v) {
-  return static_cast<T*>((void*)(v->IntegerValue() + &etext));
+  if (v->IsExternal()) {
+    return static_cast<T*>(External::Unwrap(v));
+  } else {
+    assert(v->IsInt32());
+    return static_cast<T*>((void*)(v->IntegerValue() + &etext));
+  }
 }
 
 
