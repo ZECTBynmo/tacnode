@@ -82,6 +82,8 @@ static Persistent<String> listeners_symbol;
 static Persistent<String> uncaught_exception_symbol;
 static Persistent<String> emit_symbol;
 
+static bool reload_mode = false;
+static bool debug_object = false;
 
 static char *eval_string = NULL;
 static int option_end_index = 0;
@@ -1983,6 +1985,10 @@ static void Load(int argc, char *argv[]) {
   NODE_SET_METHOD(process, "chdir", Chdir);
   NODE_SET_METHOD(process, "cwd", Cwd);
 
+  if (reload_mode) {
+    process->Set(String::New("reloadMode"), True());
+  }
+
 #ifdef __POSIX__
   NODE_SET_METHOD(process, "getuid", GetUid);
   NODE_SET_METHOD(process, "setuid", SetUid);
@@ -2099,9 +2105,15 @@ static void ParseArgs(int *argc, char **argv) {
   // TODO use parse opts
   for (i = 1; i < *argc; i++) {
     const char *arg = argv[i];
-    if (strstr(arg, "--debug") == arg) {
+    if (strcmp(arg, "--debug") == 0 || strcmp(arg, "--debug-brk") == 0) {
       ParseDebugOpt(arg);
       argv[i] = const_cast<char*>("");
+
+    } else if (strcmp(arg, "--reload") == 0) {
+      reload_mode = true;
+      debug_object = true;
+      argv[i] = const_cast<char*>("--expose_gc");
+
     } else if (strcmp(arg, "--version") == 0 || strcmp(arg, "-v") == 0) {
       printf("%s\n", NODE_VERSION);
       exit(0);
@@ -2205,15 +2217,24 @@ int Start(int argc, char *argv[]) {
   int v8argc = node::option_end_index;
   char **v8argv = argv;
 
-  if (node::debug_wait_connect) {
+  if (debug_wait_connect) debug_object = true;
+
+  if (debug_object) {
     // v8argv is a copy of argv up to the script file argument +2 if --debug-brk
     // to expose the v8 debugger js object so that node.js can set
     // a breakpoint on the first line of the startup script
     v8argc += 2;
     v8argv = new char*[v8argc];
-    memcpy(v8argv, argv, sizeof(argv) * node::option_end_index);
-    v8argv[node::option_end_index] = const_cast<char*>("--expose_debug_as");
-    v8argv[node::option_end_index + 1] = const_cast<char*>("v8debug");
+
+    for (int i = 0; i < option_end_index; i++) {
+      v8argv[i] = argv[i];
+    }
+
+    v8argv[option_end_index] = const_cast<char*>("--expose_debug_as=v8debug");
+
+    for (int i = option_end_index; i < argc; i++) {
+      v8argv[i + 1] = argv[i];
+    }
   }
 
   // For the normal stack which moves from high to low addresses when frames

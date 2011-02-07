@@ -370,6 +370,8 @@
     this.loaded = false;
   }
 
+  NativeModule.functionid = 0;
+
   NativeModule._source = process.binding('natives');
   NativeModule._cache = {};
 
@@ -408,11 +410,14 @@
   }
 
   NativeModule.wrap = function(script) {
-    return NativeModule.wrapper[0] + script + NativeModule.wrapper[1];
+    this.functionid = ++NativeModule.functionid;
+    return NativeModule.wrapper[0] +
+           script +
+           NativeModule.wrapper[1];
   };
 
   NativeModule.wrapper = [
-    '(function (exports, require, module, __filename, __dirname) { ',
+    '(function __f(exports, require, module, __filename, __dirname) { ',
     '\n});'
   ];
 
