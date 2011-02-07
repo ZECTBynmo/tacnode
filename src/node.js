@@ -410,14 +410,13 @@
   }
 
   NativeModule.wrap = function(script) {
-    this.functionid = ++NativeModule.functionid;
     return NativeModule.wrapper[0] +
            script +
            NativeModule.wrapper[1];
   };
 
   NativeModule.wrapper = [
-    '(function __f(exports, require, module, __filename, __dirname) { ',
+    '(function (exports, require, module, __filename, __dirname) { ',
     '\n});'
   ];
 
