@@ -191,6 +191,11 @@
       var l = nextTickQueue.length;
       if (l === 0) return;
 
+      if (process.features.domains) {
+        var domain = NativeModule.require('domain');
+        assert(domain.getCurrent() == domain.defaultDomain);
+      }
+
       try {
         for (var i = 0; i < l; i++) {
           dispatch(nextTickQueue, i);
@@ -528,21 +533,25 @@
   function dispatch(obj, method, arg0, arg1, arg2, arg3) {
     assert(arguments.length < 7);
  
-    var domain = obj.domain;
-    if (domain) {
-      domain.enter();
+    var domain;
+    if (obj.domain) {
+      domain = obj.domain
+    } else {
+      domain = NativeModule.require('domain').defaultDomain;
     }
+
+    domain.enter();
 
     try {
       obj[method](arg0, arg1, arg2, arg3);
     } catch (e) {
+      throw e;
       domain.emit('error', e);
       domain.kill();
     }
 
-    if (domain) {
-      domain.exit();
-    }
+  debugger;
+    domain.exit();
 
     NativeModule.require('domain').pollNewDomains();
   }
