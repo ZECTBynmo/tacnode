@@ -543,7 +543,11 @@
     domain.enter();
 
     try {
-      obj[method](arg0, arg1, arg2, arg3);
+      if (typeof obj[method] == 'function') {
+        obj[method](arg0, arg1, arg2, arg3);
+      } else {
+        // print error?
+      }
     } catch (e) {
       throw e;
       domain.emit('error', e);
