@@ -54,6 +54,7 @@
 #include <io.h>
 #define umask _umask
 typedef int mode_t;
+#include <psapi.h>
 #endif
 #include <errno.h>
 #include <sys/types.h>
@@ -2014,136 +2015,6 @@ static Handle<Object> GetFeatures() {
 }
 
 
-Handle<Object> SetupProcessObject(int argc, char *argv[]) {
-  HandleScope scope;
-
-  int i, j;
-
-  Local<FunctionTemplate> process_template = FunctionTemplate::New();
-
-  process = Persistent<Object>::New(process_template->GetFunction()->NewInstance());
-
-
-  process->SetAccessor(String::New("title"),
-                       ProcessTitleGetter,
-                       ProcessTitleSetter);
-
-  // process.version
-  process->Set(String::NewSymbol("version"), String::New(NODE_VERSION));
-
-#ifdef NODE_PREFIX
-  // process.installPrefix
-  process->Set(String::NewSymbol("installPrefix"), String::New(NODE_PREFIX));
-#endif
-
-  // process.moduleLoadList
-  module_load_list = Persistent<Array>::New(Array::New());
-  process->Set(String::NewSymbol("moduleLoadList"), module_load_list);
-
-  Local<Object> versions = Object::New();
-  char buf[20];
-  process->Set(String::NewSymbol("versions"), versions);
-  // +1 to get rid of the leading 'v'
-  versions->Set(String::NewSymbol("node"), String::New(NODE_VERSION+1));
-  versions->Set(String::NewSymbol("v8"), String::New(V8::GetVersion()));
-  versions->Set(String::NewSymbol("ares"), String::New(ARES_VERSION_STR));
-  snprintf(buf, 20, "%d.%d", UV_VERSION_MAJOR, UV_VERSION_MINOR);
-  versions->Set(String::NewSymbol("uv"), String::New(buf));
-#if HAVE_OPENSSL
-  // Stupid code to slice out the version string.
-  int c, l = strlen(OPENSSL_VERSION_TEXT);
-  for (i = j = 0; i < l; i++) {
-    c = OPENSSL_VERSION_TEXT[i];
-    if ('0' <= c && c <= '9') {
-      for (j = i + 1; j < l; j++) {
-        c = OPENSSL_VERSION_TEXT[j];
-        if (c == ' ') break;
-      }
-      break;
-    }
-  }
-  versions->Set(String::NewSymbol("openssl"),
-                String::New(OPENSSL_VERSION_TEXT + i, j - i));
-#endif
-
-
-
-  // process.arch
-  process->Set(String::NewSymbol("arch"), String::New(ARCH));
-
-  // process.platform
-  process->Set(String::NewSymbol("platform"), String::New(PLATFORM));
-
-  // process.argv
-  Local<Array> arguments = Array::New(argc - option_end_index + 1);
-  arguments->Set(Integer::New(0), String::New(argv[0]));
-  for (j = 1, i = option_end_index; i < argc; j++, i++) {
-    Local<String> arg = String::New(argv[i]);
-    arguments->Set(Integer::New(j), arg);
-  }
-  // assign it
-  process->Set(String::NewSymbol("argv"), arguments);
-
-  // create process.env
-  Local<ObjectTemplate> envTemplate = ObjectTemplate::New();
-  envTemplate->SetNamedPropertyHandler(EnvGetter,
-                                       EnvSetter,
-                                       EnvQuery,
-                                       EnvDeleter,
-                                       EnvEnumerator,
-                                       Undefined());
-  Local<Object> env = envTemplate->NewInstance();
-  process->Set(String::NewSymbol("env"), env);
-
-  process->Set(String::NewSymbol("pid"), Integer::New(getpid()));
-  process->Set(String::NewSymbol("features"), GetFeatures());
-
-  // -e, --eval
-  if (eval_string) {
-    process->Set(String::NewSymbol("_eval"), String::New(eval_string));
-  }
-
-  size_t size = 2*PATH_MAX;
-  char* execPath = new char[size];
-  if (uv_exepath(execPath, &size) != 0) {
-    // as a last ditch effort, fallback on argv[0] ?
-    process->Set(String::NewSymbol("execPath"), String::New(argv[0]));
-  } else {
-    process->Set(String::NewSymbol("execPath"), String::New(execPath, size));
-  }
-  delete [] execPath;
-
-
-  // define various internal methods
-  NODE_SET_METHOD(process, "_needTickCallback", NeedTickCallback);
-  NODE_SET_METHOD(process, "reallyExit", Exit);
-  NODE_SET_METHOD(process, "chdir", Chdir);
-  NODE_SET_METHOD(process, "cwd", Cwd);
-
-  NODE_SET_METHOD(process, "umask", Umask);
-
-#ifdef __POSIX__
-  NODE_SET_METHOD(process, "getuid", GetUid);
-  NODE_SET_METHOD(process, "setuid", SetUid);
-
-  NODE_SET_METHOD(process, "setgid", SetGid);
-  NODE_SET_METHOD(process, "getgid", GetGid);
-
-  NODE_SET_METHOD(process, "_kill", Kill);
-#endif // __POSIX__
-
-  NODE_SET_METHOD(process, "dlopen", DLOpen);
-
-  NODE_SET_METHOD(process, "uptime", Uptime);
-  NODE_SET_METHOD(process, "memoryUsage", MemoryUsage);
-  NODE_SET_METHOD(process, "uvCounters", UVCounters);
-
-  NODE_SET_METHOD(process, "binding", Binding);
-
-  return process;
-}
-
-
 static void AtExit() {
   uv_tty_reset_mode();
 }
@@ -2295,6 +2166,7 @@ static void ParseArgs(int argc, char **argv) {
   option_end_index = i;
 }
 
+
 static volatile bool debugger_running = false;
 
 static void EnableDebug(bool wait_connect) {
@@ -2314,13 +2186,14 @@ static void EnableDebug(bool wait_connect) {
 
   // Print out some information.
   fprintf(stderr, "debugger listening on port %d\n", debug_port);
+  fflush(stderr);
 
   debugger_running = true;
 }
 
 
 #ifdef __POSIX__
-static void EnableDebugSignalHandler(int signal) {
+static bool EnableDebugSignalHandler(int signal) {
   // Break once process will return execution to v8
   v8::Debug::DebugBreak();
 
@@ -2331,29 +2204,45 @@ static void EnableDebugSignalHandler(int signal) {
 }
 #endif // __POSIX__
 
-#if defined(__MINGW32__) || defined(_MSC_VER)
-static bool EnableDebugSignalHandler(DWORD signal) {
+
+#ifdef _WIN32
+static BOOL WINAPI CtrlBreakHandler(DWORD signal) {
   if (signal == CTRL_C_EVENT) exit(1);
   if (signal != CTRL_BREAK_EVENT) return false;
 
-  // Break once process will return execution to v8
-  v8::Debug::DebugBreak();
-
   if (!debugger_running) {
-    fprintf(stderr, "Hit Ctrl+Break - starting debugger agent.\n");
+    // Break once process will return execution to v8
+    v8::Debug::DebugBreak();
+
+    fprintf(stderr, "Hit Ctrl+Break - starting debugger agent.\r\n");
     EnableDebug(false);
     return true;
   } else {
     // Run default system action (terminate)
     return false;
   }
+}
 
+
+DWORD WINAPI EnableDebugThreadProc(void* arg) {
+  // Break once process will return execution to v8
+  v8::Debug::DebugBreak();
+
+  if (!debugger_running) {
+    for (int i = 0; i < 1; i++) {
+      fprintf(stderr, "Starting debugger agent.\r\n");
+      fflush(stderr);
+      EnableDebug(false);
+    }
+    return true;
+  }
+
+  return 0;
 }
 #endif
 
 
 #ifdef __POSIX__
-
 static int RegisterSignalHandler(int signal, void (*handler)(int)) {
   struct sigaction sa;
 
@@ -2363,6 +2252,86 @@ static int RegisterSignalHandler(int signal, void (*handler)(int)) {
   return sigaction(signal, &sa, NULL);
 }
 #endif // __POSIX__
+
+
+Handle<Value> DebugProcess(const Arguments& args) {
+  HandleScope scope;
+
+  if (args.Length() != 1) {
+    return ThrowException(Exception::Error(String::New("Invalid numnber of arguments.")));
+  }
+
+#ifdef __POSIX__
+  pid_t pid;
+  int r;
+
+  pid = args[0]->IntegerValue();
+  r = kill(pid, SIGUSR1);
+  if (r != 0) {
+    return ThrowException(ErrnoException(errno, "kill"));
+  }
+#else
+  DWORD pid;
+  HANDLE process = NULL;
+  HANDLE thread = NULL;
+  WCHAR own_path[MAX_PATH];
+  WCHAR debuggee_path[MAX_PATH];
+
+  pid = (DWORD) args[0]->IntegerValue();
+
+  process = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION |
+                            PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
+                            PROCESS_VM_READ,
+                        FALSE,
+                        pid);
+  if (process == NULL) {
+    // Fail
+  }
+
+  // Check that the debugger and the debuggee use exactly the same image, so
+  // we are sure it's address space layout requirements are met. Trying to
+  // debug anything else will just crash the debuggee.
+  if (GetProcessImageFileNameW(GetCurrentProcess(),
+                               own_path,
+                               MAX_PATH) == 0) {
+    // Fail
+  }
+  if (GetProcessImageFileNameW(process,
+                               debuggee_path,
+                               MAX_PATH) == 0) {
+    // Fail
+  };
+  if (wcsncmp(own_path, debuggee_path, MAX_PATH) != 0) {
+    // Fail
+  }
+
+  // The start address of the thread must be valid in the debuggee's address
+  // space. DLL rebasing and ASLR could still break that, but it's unlikely.
+  // Layout randomization is only done at boot time, and DLL rebasing is only
+  // used when collisions occur, which is unlikely since the .exe is loaded
+  // very early in the process.
+  thread = CreateRemoteThread(process,
+                              NULL,
+                              0,
+                              EnableDebugThreadProc,
+                              NULL,
+                              0,
+                              NULL);
+  if (thread == NULL) {
+    // Fail
+  }
+
+  // Wait for the thread to terminate
+  if (WaitForSingleObject(thread, INFINITE) != WAIT_OBJECT_0) {
+    // Fail
+  }
+
+  CloseHandle(thread);
+  CloseHandle(process);
+#endif
+
+  return Undefined();
+}
 
 
 char** Init(int argc, char *argv[]) {
@@ -2454,7 +2423,7 @@ char** Init(int argc, char *argv[]) {
     RegisterSignalHandler(SIGUSR1, EnableDebugSignalHandler);
 #endif // __POSIX__
 #if defined(__MINGW32__) || defined(_MSC_VER)
-    SetConsoleCtrlHandler((PHANDLER_ROUTINE) EnableDebugSignalHandler, TRUE);
+    SetConsoleCtrlHandler(CtrlBreakHandler, TRUE);
 #endif
   }
 
@@ -2473,6 +2442,138 @@ void EmitExit(v8::Handle<v8::Object> process) {
   if (try_catch.HasCaught()) {
     FatalException(try_catch);
   }
+}
+
+
+Handle<Object> SetupProcessObject(int argc, char *argv[]) {
+  HandleScope scope;
+
+  int i, j;
+
+  Local<FunctionTemplate> process_template = FunctionTemplate::New();
+
+  process = Persistent<Object>::New(process_template->GetFunction()->NewInstance());
+
+
+  process->SetAccessor(String::New("title"),
+                       ProcessTitleGetter,
+                       ProcessTitleSetter);
+
+  // process.version
+  process->Set(String::NewSymbol("version"), String::New(NODE_VERSION));
+
+#ifdef NODE_PREFIX
+  // process.installPrefix
+  process->Set(String::NewSymbol("installPrefix"), String::New(NODE_PREFIX));
+#endif
+
+  // process.moduleLoadList
+  module_load_list = Persistent<Array>::New(Array::New());
+  process->Set(String::NewSymbol("moduleLoadList"), module_load_list);
+
+  Local<Object> versions = Object::New();
+  char buf[20];
+  process->Set(String::NewSymbol("versions"), versions);
+  // +1 to get rid of the leading 'v'
+  versions->Set(String::NewSymbol("node"), String::New(NODE_VERSION+1));
+  versions->Set(String::NewSymbol("v8"), String::New(V8::GetVersion()));
+  versions->Set(String::NewSymbol("ares"), String::New(ARES_VERSION_STR));
+  snprintf(buf, 20, "%d.%d", UV_VERSION_MAJOR, UV_VERSION_MINOR);
+  versions->Set(String::NewSymbol("uv"), String::New(buf));
+#if HAVE_OPENSSL
+  // Stupid code to slice out the version string.
+  int c, l = strlen(OPENSSL_VERSION_TEXT);
+  for (i = j = 0; i < l; i++) {
+    c = OPENSSL_VERSION_TEXT[i];
+    if ('0' <= c && c <= '9') {
+      for (j = i + 1; j < l; j++) {
+        c = OPENSSL_VERSION_TEXT[j];
+        if (c == ' ') break;
+      }
+      break;
+    }
+  }
+  versions->Set(String::NewSymbol("openssl"),
+                String::New(OPENSSL_VERSION_TEXT + i, j - i));
+#endif
+
+
+
+  // process.arch
+  process->Set(String::NewSymbol("arch"), String::New(ARCH));
+
+  // process.platform
+  process->Set(String::NewSymbol("platform"), String::New(PLATFORM));
+
+  // process.argv
+  Local<Array> arguments = Array::New(argc - option_end_index + 1);
+  arguments->Set(Integer::New(0), String::New(argv[0]));
+  for (j = 1, i = option_end_index; i < argc; j++, i++) {
+    Local<String> arg = String::New(argv[i]);
+    arguments->Set(Integer::New(j), arg);
+  }
+  // assign it
+  process->Set(String::NewSymbol("argv"), arguments);
+
+  // create process.env
+  Local<ObjectTemplate> envTemplate = ObjectTemplate::New();
+  envTemplate->SetNamedPropertyHandler(EnvGetter,
+                                       EnvSetter,
+                                       EnvQuery,
+                                       EnvDeleter,
+                                       EnvEnumerator,
+                                       Undefined());
+  Local<Object> env = envTemplate->NewInstance();
+  process->Set(String::NewSymbol("env"), env);
+
+  process->Set(String::NewSymbol("pid"), Integer::New(getpid()));
+  process->Set(String::NewSymbol("features"), GetFeatures());
+
+  // -e, --eval
+  if (eval_string) {
+    process->Set(String::NewSymbol("_eval"), String::New(eval_string));
+  }
+
+  size_t size = 2*PATH_MAX;
+  char* execPath = new char[size];
+  if (uv_exepath(execPath, &size) != 0) {
+    // as a last ditch effort, fallback on argv[0] ?
+    process->Set(String::NewSymbol("execPath"), String::New(argv[0]));
+  } else {
+    process->Set(String::NewSymbol("execPath"), String::New(execPath, size));
+  }
+  delete [] execPath;
+
+
+  // define various internal methods
+  NODE_SET_METHOD(process, "_needTickCallback", NeedTickCallback);
+  NODE_SET_METHOD(process, "reallyExit", Exit);
+  NODE_SET_METHOD(process, "chdir", Chdir);
+  NODE_SET_METHOD(process, "cwd", Cwd);
+
+  NODE_SET_METHOD(process, "umask", Umask);
+
+#ifdef __POSIX__
+  NODE_SET_METHOD(process, "getuid", GetUid);
+  NODE_SET_METHOD(process, "setuid", SetUid);
+
+  NODE_SET_METHOD(process, "setgid", SetGid);
+  NODE_SET_METHOD(process, "getgid", GetGid);
+
+  NODE_SET_METHOD(process, "_kill", Kill);
+#endif // __POSIX__
+
+  NODE_SET_METHOD(process, "_debugProcess", DebugProcess);
+
+  NODE_SET_METHOD(process, "dlopen", DLOpen);
+
+  NODE_SET_METHOD(process, "uptime", Uptime);
+  NODE_SET_METHOD(process, "memoryUsage", MemoryUsage);
+  NODE_SET_METHOD(process, "uvCounters", UVCounters);
+
+  NODE_SET_METHOD(process, "binding", Binding);
+
+  return process;
 }
 
 
