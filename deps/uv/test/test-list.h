@@ -91,6 +91,7 @@ TEST_DECLARE   (spawn_exit_code)
 TEST_DECLARE   (spawn_stdout)
 TEST_DECLARE   (spawn_stdin)
 TEST_DECLARE   (spawn_and_kill)
+TEST_DECLARE   (spawn_and_kill_with_std)
 TEST_DECLARE   (spawn_and_ping)
 TEST_DECLARE   (kill)
 TEST_DECLARE   (fs_file_noent)
@@ -118,6 +119,10 @@ TEST_DECLARE   (fs_open_dir)
 TEST_DECLARE   (threadpool_queue_work_simple)
 TEST_DECLARE   (thread_mutex)
 TEST_DECLARE   (thread_rwlock)
+TEST_DECLARE   (thread_create)
+TEST_DECLARE   (strlcpy)
+TEST_DECLARE   (strlcat)
+
 #ifdef _WIN32
 TEST_DECLARE   (spawn_detect_pipe_name_collisions_on_windows)
 TEST_DECLARE   (argument_escaping)
@@ -240,6 +245,7 @@ TASK_LIST_START
   TEST_ENTRY  (spawn_stdout)
   TEST_ENTRY  (spawn_stdin)
   TEST_ENTRY  (spawn_and_kill)
+  TEST_ENTRY  (spawn_and_kill_with_std)
   TEST_ENTRY  (spawn_and_ping)
   TEST_ENTRY  (kill)
 #ifdef _WIN32
@@ -274,6 +280,9 @@ TASK_LIST_START
   TEST_ENTRY  (threadpool_queue_work_simple)
   TEST_ENTRY  (thread_mutex)
   TEST_ENTRY  (thread_rwlock)
+  TEST_ENTRY  (thread_create)
+  TEST_ENTRY  (strlcpy)
+  TEST_ENTRY  (strlcat)
 
 #if 0
   /* These are for testing the test runner. */
