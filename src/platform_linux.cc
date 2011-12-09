@@ -49,7 +49,6 @@
 #endif
 
 #include <node_vars.h>
-#define linux_process_title NODE_VAR(linux_process_title)
 #define getbuf NODE_VAR(getbuf)
 
 extern char **environ;
@@ -57,6 +56,11 @@ extern char **environ;
 namespace node {
 
 using namespace v8;
+
+static struct {
+  char *str;
+  size_t len;
+} linux_process_title;
 
 double Platform::prog_start_time = Platform::GetUptime();
 

@@ -38,12 +38,12 @@
 #include <time.h>
 #include <stdio.h>
 
-#include <node_vars.h>
-#define process_title NODE_VAR(process_title)
 
 namespace node {
 
 using namespace v8;
+
+static char* process_title;
 
 double Platform::prog_start_time = Platform::GetUptime();
 
