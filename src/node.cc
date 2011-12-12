@@ -97,6 +97,7 @@ extern char **environ;
 
 
 #include <node_vars.h>
+#include "atomic_ops.h"
 
 // We do the following to minimize the detal between v0.6 branch. We want to
 // use the variables as they were being used before.
@@ -1824,20 +1825,15 @@ static Handle<Value> Binding(const Arguments& args) {
 }
 
 
-static struct {
-  uv_mutex_t lock_;
-  unsigned long counter_;
-} thread_id_generator_;
-
-
 static unsigned long NewThreadId() {
-  unsigned long thread_id;
+  static AO_t thread_id_counter = 1;
+  AO_t thread_id;
 
-  uv_mutex_lock(&thread_id_generator_.lock_);
-  thread_id = ++thread_id_generator_.counter_;
-  uv_mutex_unlock(&thread_id_generator_.lock_);
+  do
+    thread_id = thread_id_counter;
+  while (!AO_compare_and_swap(&thread_id_counter, thread_id, thread_id + 1));
 
-  return thread_id;
+  return (unsigned long) thread_id;
 }
 
 
@@ -1848,6 +1844,8 @@ struct ThreadInfo {
   int argc_;
 
   ThreadInfo(int argc, char** argv) {
+    thread_id_ = NewThreadId();
+
     argc_ = argc;
     argv_ = new char*[argc_ + 1];
 
@@ -1876,7 +1874,7 @@ struct ThreadInfo {
     for (int i = 0; i < argc_; ++i) {
       delete[] argv_[i];
     }
-    delete argv_;
+    delete[] argv_;
   }
 };
 
@@ -1904,7 +1902,6 @@ static Handle<Value> NewIsolate(const Arguments& args) {
   assert(argv->Length() >= 2);
 
   ThreadInfo* ti = new ThreadInfo(argv);
-  ti->thread_id_ = NewThreadId();
 
   if (uv_thread_create(&ti->thread_, RunIsolate, ti)) {
     delete ti;
@@ -2754,8 +2751,6 @@ void StartThread(unsigned long thread_id,
 
 
 int Start(int argc, char *argv[]) {
-  if (uv_mutex_init(&thread_id_generator_.lock_)) abort();
-
   // This needs to run *before* V8::Initialize()
   argv = ProcessInit(argc, argv);
 
