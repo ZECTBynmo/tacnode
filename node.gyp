@@ -55,6 +55,7 @@
 
       'dependencies': [
         'deps/http_parser/http_parser.gyp:http_parser',
+        'deps/atomic_ops/atomic_ops.gyp:atomic_ops',
         'deps/v8/tools/gyp/v8.gyp:v8',
         'deps/uv/uv.gyp:uv',
         'deps/zlib/zlib.gyp:zlib',
