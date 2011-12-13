@@ -24,6 +24,22 @@
 
 namespace node {
 
+// Triggers a compile-time error if the assertion fails.
+// The assertion needs to be a constant expression.
+#define BUILD_BUG_ON(cond) ((void) sizeof(char[1 - 2 * !!(cond)]))
+
+// Disallow the copy constructor and assignment. Use it in the
+// private: sections of your class.
+#define DISALLOW_COPY_AND_ASSIGN(TypeName) \
+  TypeName(const TypeName&); \
+  void operator=(const TypeName&)
+
+// Like DISALLOW_COPY_AND_ASSIGN but also disables the default
+// constructor.
+#define DISALLOW_IMPLICIT_CONSTRUCTORS(TypeName) \
+  TypeName(); \
+  DISALLOW_COPY_AND_ASSIGN(TypeName)
+
 #ifndef offset_of
 // g++ in strict mode complains loudly about the system offsetof() macro
 // because it uses NULL as the base address.
