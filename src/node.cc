@@ -97,7 +97,7 @@ extern char **environ;
 
 
 #include <node_vars.h>
-#include "atomic_ops.h"
+#include <node_atomic.h>
 
 // We do the following to minimize the detal between v0.6 branch. We want to
 // use the variables as they were being used before.
@@ -1837,25 +1837,13 @@ static unsigned long NewThreadId() {
 }
 
 
+// TODO break up in definition and implementation and move to separate files
 struct ThreadInfo {
+  AtomicQueueEntry queue_entry_;
   unsigned long thread_id_;
   uv_thread_t thread_;
   char** argv_;
   int argc_;
-
-  ThreadInfo(int argc, char** argv) {
-    thread_id_ = NewThreadId();
-
-    argc_ = argc;
-    argv_ = new char*[argc_ + 1];
-
-    for (int i = 0; i < argc_; ++i) {
-      size_t size = 1 + strlen(argv[i]);
-      argv_[i] = new char[size];
-      memcpy(argv_[i], argv[i], size);
-    }
-    argv_[argc_] = NULL;
-  }
 
   ThreadInfo(Handle<Array> args) {
     argc_ = args->Length();
@@ -1868,15 +1856,25 @@ struct ThreadInfo {
       memcpy(argv_[i], *str, size);
     }
     argv_[argc_] = NULL;
+
+    active_threads_.Insert(this);
   }
 
+
   ~ThreadInfo() {
+    active_threads_.Remove(this);
+
     for (int i = 0; i < argc_; ++i) {
       delete[] argv_[i];
     }
     delete[] argv_;
   }
+
+  static AtomicQueue<ThreadInfo> active_threads_;
 };
+
+
+AtomicQueue<ThreadInfo> ThreadInfo::active_threads_;
 
 
 static void RunIsolate(void* arg) {
@@ -2761,6 +2759,11 @@ int Start(int argc, char *argv[]) {
   Isolate* isolate = Isolate::New(uv_default_loop());
   StartThread(NewThreadId(), isolate, argc, argv);
   isolate->Dispose();
+
+  while (ThreadInfo* ti = ThreadInfo::active_threads_.Pop()) {
+    if (uv_thread_join(&ti->thread_))
+      abort();
+  }
 
 #ifndef NDEBUG
   // Clean up.
