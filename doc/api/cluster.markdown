@@ -164,6 +164,7 @@ Example:
 
 * `env` Object, Optional.  Key/value pairs to add to child process
   environment.
+* Return: Worker Object
 
 Spawn a new worker process. This can only be called from the master process.
 
