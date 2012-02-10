@@ -1,6 +1,6 @@
-## Cluster
+# cluster
 
-    Volatility: 4 - Experimental
+    Stability: 1 - Experimental
 
 A single instance of Node runs in a single thread. To take advantage of
 multi-core systems the user will sometimes want to launch a cluster of Node
@@ -41,7 +41,7 @@ Running node will now share port 8000 between the workers:
 This feature was introduced recently, and may change in future versions.
 Please try it out and provide feedback.
 
-### cluster.settings
+## cluster.settings
 
 * Object
   * exec: String, file path to worker file.  Default: `__filename`
@@ -53,7 +53,7 @@ Please try it out and provide feedback.
 All settings set by the `.setupMaster` is stored in this settings object.
 This object is not supposed to be change or set manually, by you.
 
-### cluster.isMaster
+## cluster.isMaster
 
 * Boolean
 
@@ -61,7 +61,7 @@ True if the process is a master. This is determined
 by the `process.env.NODE_UNIQUE_ID`. If `process.env.NODE_UNIQUE_ID` is
 undefined, then `isMaster` is `true`.
 
-### cluster.isWorker
+## cluster.isWorker
 
 * Boolean
 
@@ -69,7 +69,7 @@ This boolean flag is true if the process is a worker forked from a master.
 If the `process.env.NODE_UNIQUE_ID` is set to a value, then
 `isWorker` is `true`.
 
-### Event: 'fork'
+## Event: 'fork'
 
 * Argument: `worker` object
 
@@ -92,21 +92,21 @@ This can be used to log worker activity, and create you own timeout.
       errorMsg();
     });
 
-### Event: 'online'
+## Event: 'online'
 
 * Argument: `worker` object
 
 After forking a new worker, the worker should respond with a online message.
 When the master receives a online message it will emit such event.
 The difference between 'fork' and 'online' is that fork is emitted when the
-master tries to fork a worker, and 'online' is emitted when the worker is being
-executed.
+master tries to fork a worker, and 'online' is emitted when the worker is
+being executed.
 
     cluster.on('online', function (worker) {
       console.log("Yay, the worker responded after it was forked");
     });
 
-### Event: 'listening'
+## Event: 'listening'
 
 * Argument: `worker` object
 
@@ -118,7 +118,7 @@ where the 'listening' event is emitted.
       console.log("We are now connected");
     });
 
-### Event: 'death'
+## Event: 'death'
 
 * Argument: `worker` object
 
@@ -130,7 +130,7 @@ This can be used to restart the worker by calling `fork()` again.
       cluster.fork();
     });
 
-### Event 'setup'
+## Event 'setup'
 
 * Argument: `worker` object
 
@@ -138,7 +138,7 @@ When the `.setupMaster()` function has been executed this event emits.
 If `.setupMaster()` was not executed before `fork()` this function will
 call `.setupMaster()` with no arguments.
 
-### cluster.setupMaster([settings])
+## cluster.setupMaster([settings])
 
 * `settings` Object, Optional
   * exec: String, file path to worker file.  Default: `__filename`
@@ -160,7 +160,7 @@ Example:
     });
     cluster.autoFork();
 
-### cluster.fork([env])
+## cluster.fork([env])
 
 * `env` Object, Optional.  Key/value pairs to add to child process
   environment.
@@ -168,7 +168,7 @@ Example:
 
 Spawn a new worker process. This can only be called from the master process.
 
-### cluster.settings
+## cluster.settings
 
 * Object
   * exec: String, file path to worker file.  Default: `__filename`
@@ -180,7 +180,7 @@ Spawn a new worker process. This can only be called from the master process.
 All settings set by the `.setupMaster` is stored in this settings object.
 This object is not supposed to be change or set manually, by you.
 
-### cluster.workers
+## cluster.workers
 
 * Object
 
