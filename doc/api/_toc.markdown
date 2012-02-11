@@ -1,4 +1,4 @@
-## Table of Contents
+# Table of Contents
 
 * [Synopsis](synopsis.html)
 * [Globals](globals.html)
