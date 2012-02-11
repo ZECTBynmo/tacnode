@@ -127,7 +127,7 @@ out/doc/%: doc/%
 out/doc/api/%.json: doc/api/%.markdown node $(apidoc_dirs) tools/doc/
 	out/Release/node tools/doc/generate.js --format=json $< > $@
 
-out/doc/api/%.html: doc/api/%.json node $(apidoc_dirs) $(apiassets) tools/doc/
+out/doc/api/%.html: doc/api/%.markdown node $(apidoc_dirs) $(apiassets) tools/doc/
 	out/Release/node tools/doc/generate.js --format=html --template=doc/template.html $< > $@
 
 out/doc/%:
