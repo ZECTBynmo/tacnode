@@ -9,11 +9,11 @@ var fs = require('fs');
 var args = process.argv.slice(2);
 var format = 'json';
 var template = null;
-var input = null;
+var inputFile = null;
 
 args.forEach(function (arg) {
   if (!arg.match(/^\-\-/)) {
-    input = arg;
+    inputFile = arg;
   } else if (arg.match(/^\-\-format=/)) {
     format = arg.replace(/^\-\-format=/, '');
   } else if (arg.match(/^\-\-template=/)) {
@@ -21,37 +21,31 @@ args.forEach(function (arg) {
   }
 })
 
-// If we didn't get an input, then read from stdin.
-if (input) {
-  console.error('Input file = %s', input);
-  fs.readFile(input, 'utf8', function(er, input) {
-    if (er) throw er;
-    next(input);
-  });
-} else {
-  var i = '';
-  var stdin = process.openStdin();
-  var StringDecoder = require('string_decoder').StringDecoder;
-  var sd = new StringDecoder('utf8');
-  stdin.on('data', function(chunk) {
-    i += sd.write(chunk);
-  });
-  stdin.on('end', function() {
-    next(i);
-  });
+
+if (!inputFile) {
+  throw new Error('No input file specified');
 }
+
+
+console.error('Input file = %s', inputFile);
+fs.readFile(inputFile, 'utf8', function(er, input) {
+  if (er) throw er;
+  next(input);
+});
+
+
 
 function next(input) {
   switch (format) {
     case 'json':
-      require('./json.js')(input, function(er, obj) {
+      require('./json.js')(input, inputFile, function(er, obj) {
         console.log(JSON.stringify(obj, null, 2));
         if (er) throw er;
       });
       break;
 
     case 'html':
-      require('./html.js')(input, template, function(er, html) {
+      require('./html.js')(input, inputFile, template, function(er, html) {
         if (er) throw er;
         console.log(html);
       });

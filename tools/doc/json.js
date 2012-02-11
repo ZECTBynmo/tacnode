@@ -4,13 +4,13 @@ module.exports = doJSON;
 // A module looks like this: https://gist.github.com/1777387
 
 var marked = require('marked');
-var root = {};
-var stack = [root];
-var depth = 0;
-var current = root;
-var state = null;
 
-function doJSON(input, cb) {
+function doJSON(input, filename, cb) {
+  var root = {source: filename};
+  var stack = [root];
+  var depth = 0;
+  var current = root;
+  var state = null;
   var lexed = marked.lexer(input);
   lexed.forEach(function (tok) {
     var type = tok.type;
@@ -18,11 +18,14 @@ function doJSON(input, cb) {
 
     // <!-- type = module -->
     // This is for cases where the markdown semantic structure is lacking.
-    var meta;
-    if (type === 'paragraph' &&
-        (meta = text.match(/^<!--([^=]+)=([^\-])+-->\n*$/))) {
-      current[meta[1].trim()] = meta[2].trim();
-      return
+    if (type === 'paragraph' || type === 'html') {
+      var metaExpr = /<!--([^=]+)=([^\-]+)-->\n*/g;
+      text = text.replace(metaExpr, function(_0, k, v) {
+        current[k.trim()] = v.trim();
+        return '';
+      });
+      text = text.trim();
+      if (!text) return;
     }
 
     if (type === 'heading' &&
@@ -32,21 +35,33 @@ function doJSON(input, cb) {
                             JSON.stringify(tok)));
       }
 
-      // if the level is greater than the current depth,
-      // then it's a child, so we should just leave the stack
-      // as it is.
-      // However, if it's a sibling or higher, then it implies
-      // the closure of the other sections that came before.
-      // root is always considered the level=0 section,
-      // and the lowest heading is 1, so this should always
-      // result in having a valid parent node.
-      var d = tok.depth;
-      while (d <= depth) {
-        finishSection(stack.pop(), stack[stack.length - 1]);
-        d++;
+      // Sometimes we have two headings with a single
+      // blob of description.  Treat as a clone.
+      if (current &&
+          state === 'AFTERHEADING' &&
+          depth === tok.depth) {
+        var clone = current;
+        current = newSection(tok);
+        current.clone = clone;
+        // don't keep it around on the stack.
+        stack.pop();
+      } else {
+        // if the level is greater than the current depth,
+        // then it's a child, so we should just leave the stack
+        // as it is.
+        // However, if it's a sibling or higher, then it implies
+        // the closure of the other sections that came before.
+        // root is always considered the level=0 section,
+        // and the lowest heading is 1, so this should always
+        // result in having a valid parent node.
+        var d = tok.depth;
+        while (d <= depth) {
+          finishSection(stack.pop(), stack[stack.length - 1]);
+          d++;
+        }
+        current = newSection(tok);
       }
 
-      current = newSection(tok);
       depth = tok.depth;
       stack.push(current);
       state = 'AFTERHEADING';
@@ -76,6 +91,10 @@ function doJSON(input, cb) {
         current.list.level = 1;
       } else {
         current.desc = current.desc || [];
+        if (!Array.isArray(current.desc)) {
+          current.shortDesc = current.desc;
+          current.desc = [];
+        }
         current.desc.push(tok);
         state = 'DESC';
       }
@@ -206,12 +225,17 @@ function processList(section) {
   // depending on the section type, the list could be different things.
 
   switch (section.type) {
+    case 'ctor':
+    case 'classMethod':
     case 'method':
       // each item is an argument, unless the name is 'return',
       // in which case it's the return value.
-      section.params = values.filter(function(v) {
+      section.signatures = section.signatures || [];
+      var sig = {}
+      section.signatures.push(sig);
+      sig.params = values.filter(function(v) {
         if (v.name === 'return') {
-          section.return = v;
+          sig.return = v;
           return false;
         }
         return true;
@@ -276,7 +300,7 @@ function parseListItem(item) {
 
   text = text.replace(/^, /, '').trim();
   var typeExpr =
-      /^((?:[a-zA-Z]* )?object|string|bool(?:ean)?|regexp?|null|function)/i;
+      /^((?:[a-zA-Z]* )?object|string|bool(?:ean)?|regexp?|null|function|number|integer)/i;
   var type = text.match(typeExpr);
   if (type) {
     item.type = type[1];
@@ -291,6 +315,7 @@ function parseListItem(item) {
     text = text.replace(optExpr, '');
   }
 
+  text = text.replace(/^\s*-\s*/, '');
   text = text.trim();
   if (text) item.desc = text;
 }
@@ -306,15 +331,33 @@ function finishSection(section, parent) {
   if (!section.type) {
     section.type = 'module';
     section.displayName = section.name;
-    section.name = section.name.toLowerCase();
+    section.name = section.name.toLowerCase()
+      .trim().replace(/\s+/g, '_');
   }
 
-  if (section.desc) {
+  if (section.desc && Array.isArray(section.desc)) {
     section.desc = marked.parser(section.desc);
   }
 
   if (section.list) {
     processList(section);
+  }
+
+  // classes sometimes have various 'ctor' children
+  // which are actually just descriptions of a constructor
+  // class signature.
+  // Merge them into the parent.
+  if (section.type === 'class' && section.ctors) {
+    section.signatures = section.signatures || [];
+    var sigs = section.signatures;
+    section.ctors.forEach(function(ctor) {
+      ctor.signatures = ctor.signatures || [{}];
+      ctor.signatures.forEach(function(sig) {
+        sig.desc = ctor.desc;
+      });
+      sigs.push.apply(sigs, ctor.signatures);
+    });
+    delete section.ctors;
   }
 
   // properties are a bit special.
@@ -325,6 +368,15 @@ function finishSection(section, parent) {
       else delete p.type;
       delete p.typeof;
     });
+  }
+
+  // handle clones
+  if (section.clone) {
+    var clone = section.clone;
+    delete section.clone;
+    delete clone.clone;
+    deepCopy(section, clone);
+    finishSection(clone, parent);
   }
 
   var plur;
@@ -341,12 +393,45 @@ function finishSection(section, parent) {
 }
 
 
+// Not a general purpose deep copy.
+// But sufficient for these basic things.
+function deepCopy(src, dest) {
+  Object.keys(src).filter(function(k) {
+    return !dest.hasOwnProperty(k);
+  }).forEach(function(k) {
+    dest[k] = deepCopy_(src[k]);
+  });
+}
+
+function deepCopy_(src) {
+  if (!src) return src;
+  if (Array.isArray(src)) {
+    var c = new Array(src.length);
+    src.forEach(function(v, i) {
+      c[i] = deepCopy_(v);
+    });
+    return c;
+  }
+  if (typeof src === 'object') {
+    var c = {};
+    Object.keys(src).forEach(function(k) {
+      c[k] = deepCopy_(src[k]);
+    });
+    return c;
+  }
+  return src;
+}
+
 
 // these parse out the contents of an H# tag
 var eventExpr = /^Event:?\s*['"]?([^"']+).*$/i;
 var classExpr = /^Class:\s*([^ ]+).*?$/i;
 var propExpr = /^(?:property:?\s*)?[^\.]+\.([^ \.\(\)]+)\s*?$/i;
-var methExpr = /^(?:method:?\s*)?[^\.]+\.([^ \.\(\)]+)\([^\)]*\)\s*?$/i;
+var classMethExpr =
+  /^class\s*method\s*:?[^\.]+\.([^ \.\(\)]+)\([^\)]*\)\s*?$/i;
+var methExpr =
+  /^(?:method:?\s*)?[^\.]+\.([^ \.\(\)]+)\([^\)]*\)\s*?$/i;
+var newExpr = /^new ([A-Z][a-z]+)\([^\)]*\)\s*?$/;
 
 function newSection(tok) {
   var section = {};
@@ -361,9 +446,15 @@ function newSection(tok) {
   } else if (text.match(propExpr)) {
     section.type = 'property';
     section.name = text.replace(propExpr, '$1');
+  } else if (text.match(classMethExpr)) {
+    section.type = 'classMethod';
+    section.name = text.replace(classMethExpr, '$1');
   } else if (text.match(methExpr)) {
     section.type = 'method';
     section.name = text.replace(methExpr, '$1');
+  } else if (text.match(newExpr)) {
+    section.type = 'ctor';
+    section.name = text.replace(newExpr, '$1');
   } else {
     section.name = text;
   }
