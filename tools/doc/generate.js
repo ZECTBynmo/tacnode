@@ -42,11 +42,6 @@ if (input) {
 }
 
 function next(input) {
-  var lexed = marked.lexer(input);
-  console.error(lexed.filter(function(tok) {
-    return true // tok.type === 'heading';
-  }));
-
   switch (format) {
     case 'json':
       require('./json.js')(input, function(er, obj) {
