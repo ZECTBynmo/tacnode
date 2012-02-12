@@ -58,7 +58,7 @@ function buildToc(lexed, filename, cb) {
   var depth = 0;
   lexed.forEach(function(tok) {
     if (tok.type !== 'heading') return;
-    if (Math.abs(tok.depth - depth) > 1) {
+    if (tok.depth - depth > 1) {
       return cb(new Error('Inappropriate heading level\n' +
                           JSON.stringify(tok)));
     }

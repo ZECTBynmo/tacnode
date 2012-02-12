@@ -30,7 +30,7 @@ function doJSON(input, filename, cb) {
 
     if (type === 'heading' &&
         !text.trim().toLowerCase().match(/^example/)) {
-      if (Math.abs(tok.depth - depth) > 1) {
+      if (tok.depth - depth > 1) {
         return cb(new Error('Inappropriate heading level\n'+
                             JSON.stringify(tok)));
       }
