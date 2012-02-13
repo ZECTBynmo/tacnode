@@ -311,6 +311,8 @@ leaner than `child_process.exec`. It has the same options.
     for stdio.  (See below)
   * `env` Object - Environment key-value pairs
   * `setsid` Boolean
+  * `silent` Boolean, If true, child doesn't write to parent's stdout
+    and stderr.
 * `callback` Function called with the output when process terminates
 * Return: ChildProcess object
 
