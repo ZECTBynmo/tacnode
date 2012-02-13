@@ -2,8 +2,6 @@
 
     Stability: 3 - Stable
 
-<!-- type = class -->
-
 Pure Javascript is Unicode friendly but not nice to binary data.  When
 dealing with TCP streams or the file system, it's necessary to handle octet
 streams. Node has several strategies for manipulating, creating, and
@@ -13,45 +11,50 @@ Raw data is stored in instances of the `Buffer` class. A `Buffer` is similar
 to an array of integers but corresponds to a raw memory allocation outside
 the V8 heap. A `Buffer` cannot be resized.
 
-The `Buffer` object is global.
+The `Buffer` class is a global, making it very rare that one would need
+to ever `require('buffer')`.
 
-Converting between Buffers and JavaScript string objects requires an explicit encoding
-method.  Here are the different string encodings;
+Converting between Buffers and JavaScript string objects requires an explicit
+encoding method.  Here are the different string encodings.
 
-* `'ascii'` - for 7 bit ASCII data only.  This encoding method is very fast, and will
-strip the high bit if set.
-Note that this encoding converts a null character (`'\0'` or `'\u0000'`) into
-`0x20` (character code of a space). If you want to convert a null character
-into `0x00`, you should use `'utf8'`.
+* `'ascii'` - for 7 bit ASCII data only.  This encoding method is very fast, and
+  will strip the high bit if set.
+  Note that this encoding converts a null character (`'\0'` or `'\u0000'`) into
+  `0x20` (character code of a space). If you want to convert a null character
+  into `0x00`, you should use `'utf8'`.
 
 * `'utf8'` - Multi byte encoded Unicode characters.  Many web pages and other document formats use UTF-8.
 
 * `'ucs2'` - 2-bytes, little endian encoded Unicode characters. It can encode
-only BMP(Basic Multilingual Plane, U+0000 - U+FFFF).
+  only BMP(Basic Multilingual Plane, U+0000 - U+FFFF).
 
 * `'base64'` - Base64 string encoding.
 
 * `'binary'` - A way of encoding raw binary data into strings by using only
-the first 8 bits of each character. This encoding method is deprecated and
-should be avoided in favor of `Buffer` objects where possible. This encoding
-will be removed in future versions of Node.
+  the first 8 bits of each character. This encoding method is deprecated and
+  should be avoided in favor of `Buffer` objects where possible. This encoding
+  will be removed in future versions of Node.
 
 * `'hex'` - Encode each byte as two hexidecimal characters.
 
+## Class: Buffer
 
-## new Buffer(size)
+The Buffer class is a global type for dealing with binary data directly.
+It can be constructed in a variety of ways.
+
+### new Buffer(size)
 
 * `size` Number
 
 Allocates a new buffer of `size` octets.
 
-## new Buffer(array)
+### new Buffer(array)
 
 * `array` Array
 
 Allocates a new buffer using an `array` of octets.
 
-## new Buffer(str, [encoding])
+### new Buffer(str, [encoding])
 
 * `str` String - string to encode.
 * `encoding` String - encoding to use, Optional.
@@ -59,7 +62,7 @@ Allocates a new buffer using an `array` of octets.
 Allocates a new buffer containing the given `str`.
 `encoding` defaults to `'utf8'`.
 
-## buffer.write(string, [offset], [length], [encoding])
+### buf.write(string, [offset], [length], [encoding])
 
 * `string` String - data to be written to buffer
 * `offset` Number, Optional, Default: 0
@@ -82,7 +85,7 @@ bytes written) is set in `Buffer._charsWritten` and will be overwritten the
 next time `buf.write()` is called.
 
 
-## buffer.toString([encoding], [start], [end])
+### buf.toString([encoding], [start], [end])
 
 * `encoding` String, Optional, Default: 'utf8'
 * `start` Number, Optional, Default: 0
@@ -95,7 +98,7 @@ Decodes and returns a string from buffer data encoded with `encoding`
 See `buffer.write()` example, above.
 
 
-## buffer[index]
+### buf[index]
 
 <!--type=property-->
 <!--name=[index]-->
@@ -116,14 +119,14 @@ Example: copy an ASCII string into a buffer, one byte at a time:
 
     // node.js
 
-## Class Method: Buffer.isBuffer(obj)
+### Class Method: Buffer.isBuffer(obj)
 
 * `obj` Object
 * Return: Boolean
 
 Tests if `obj` is a `Buffer`.
 
-## Class Method: Buffer.byteLength(string, [encoding])
+### Class Method: Buffer.byteLength(string, [encoding])
 
 * `string` String
 * `encoding` String, Optional, Default: 'utf8'
@@ -142,8 +145,7 @@ Example:
 
     // ½ + ¼ = ¾: 9 characters, 12 bytes
 
-
-## buffer.length
+### buf.length
 
 * Number
 
@@ -160,7 +162,7 @@ buffer object.  It does not change when the contents of the buffer are changed.
     // 1234
     // 1234
 
-## buffer.copy(targetBuffer, [targetStart], [sourceStart], [sourceEnd])
+### buf.copy(targetBuffer, [targetStart], [sourceStart], [sourceEnd])
 
 * `targetBuffer` Buffer object - Buffer to copy into
 * `targetStart` Number, Optional, Default: 0
@@ -188,7 +190,7 @@ into `buf2`, starting at the 8th byte in `buf2`.
     // !!!!!!!!qrst!!!!!!!!!!!!!
 
 
-## buffer.slice([start], [end])
+### buf.slice([start], [end])
 
 * `start` Number, Optional, Default: 0
 * `end` Number, Optional, Default: 0
@@ -216,7 +218,7 @@ byte from the original Buffer.
     // abc
     // !bc
 
-## buffer.readUInt8(offset, [noAssert])
+### buf.readUInt8(offset, [noAssert])
 
 * `offset` Number
 * `noAssert` Boolean, Optional, Default: false
@@ -245,8 +247,8 @@ Example:
     // 0x23
     // 0x42
 
-## buffer.readUInt16LE(offset, [noAssert])
-## buffer.readUInt16BE(offset, [noAssert])
+### buf.readUInt16LE(offset, [noAssert])
+### buf.readUInt16BE(offset, [noAssert])
 
 * `offset` Number
 * `noAssert` Boolean, Optional, Default: false
@@ -281,8 +283,8 @@ Example:
     // 0x2342
     // 0x4223
 
-## buffer.readUInt32LE(offset, [noAssert])
-## buffer.readUInt32BE(offset, [noAssert])
+### buf.readUInt32LE(offset, [noAssert])
+### buf.readUInt32BE(offset, [noAssert])
 
 * `offset` Number
 * `noAssert` Boolean, Optional, Default: false
@@ -309,7 +311,7 @@ Example:
     // 0x03042342
     // 0x42230403
 
-## buffer.readInt8(offset, [noAssert])
+### buf.readInt8(offset, [noAssert])
 
 * `offset` Number
 * `noAssert` Boolean, Optional, Default: false
@@ -323,8 +325,8 @@ may be beyond the end of the buffer. Defaults to `false`.
 Works as `buffer.readUInt8`, except buffer contents are treated as two's
 complement signed values.
 
-## buffer.readInt16LE(offset, [noAssert])
-## buffer.readInt16BE(offset, [noAssert])
+### buf.readInt16LE(offset, [noAssert])
+### buf.readInt16BE(offset, [noAssert])
 
 * `offset` Number
 * `noAssert` Boolean, Optional, Default: false
@@ -339,8 +341,8 @@ may be beyond the end of the buffer. Defaults to `false`.
 Works as `buffer.readUInt16*`, except buffer contents are treated as two's
 complement signed values.
 
-## buffer.readInt32LE(offset, [noAssert])
-## buffer.readInt32BE(offset, [noAssert])
+### buf.readInt32LE(offset, [noAssert])
+### buf.readInt32BE(offset, [noAssert])
 
 * `offset` Number
 * `noAssert` Boolean, Optional, Default: false
@@ -355,8 +357,8 @@ may be beyond the end of the buffer. Defaults to `false`.
 Works as `buffer.readUInt32*`, except buffer contents are treated as two's
 complement signed values.
 
-## buffer.readFloatLE(offset, [noAssert])
-## buffer.readFloatBE(offset, [noAssert])
+### buf.readFloatLE(offset, [noAssert])
+### buf.readFloatBE(offset, [noAssert])
 
 * `offset` Number
 * `noAssert` Boolean, Optional, Default: false
@@ -381,8 +383,8 @@ Example:
 
     // 0x01
 
-## buffer.readDoubleLE(offset, [noAssert])
-## buffer.readDoubleBE(offset, [noAssert])
+### buf.readDoubleLE(offset, [noAssert])
+### buf.readDoubleBE(offset, [noAssert])
 
 * `offset` Number
 * `noAssert` Boolean, Optional, Default: false
@@ -411,7 +413,7 @@ Example:
 
     // 0.3333333333333333
 
-## buffer.writeUInt8(value, offset, [noAssert])
+### buf.writeUInt8(value, offset, [noAssert])
 
 * `value` Number
 * `offset` Number
@@ -437,8 +439,8 @@ Example:
 
     // <Buffer 03 04 23 42>
 
-## buffer.writeUInt16LE(value, offset, [noAssert])
-## buffer.writeUInt16BE(value, offset, [noAssert])
+### buf.writeUInt16LE(value, offset, [noAssert])
+### buf.writeUInt16BE(value, offset, [noAssert])
 
 * `value` Number
 * `offset` Number
@@ -468,8 +470,8 @@ Example:
     // <Buffer de ad be ef>
     // <Buffer ad de ef be>
 
-## buffer.writeUInt32LE(value, offset, [noAssert])
-## buffer.writeUInt32BE(value, offset, [noAssert])
+### buf.writeUInt32LE(value, offset, [noAssert])
+### buf.writeUInt32BE(value, offset, [noAssert])
 
 * `value` Number
 * `offset` Number
@@ -497,7 +499,7 @@ Example:
     // <Buffer fe ed fa ce>
     // <Buffer ce fa ed fe>
 
-## buffer.writeInt8(value, offset, [noAssert])
+### buf.writeInt8(value, offset, [noAssert])
 
 * `value` Number
 * `offset` Number
@@ -514,8 +516,8 @@ should not be used unless you are certain of correctness. Defaults to `false`.
 Works as `buffer.writeUInt8`, except value is written out as a two's complement
 signed integer into `buffer`.
 
-## buffer.writeInt16LE(value, offset, [noAssert])
-## buffer.writeInt16BE(value, offset, [noAssert])
+### buf.writeInt16LE(value, offset, [noAssert])
+### buf.writeInt16BE(value, offset, [noAssert])
 
 * `value` Number
 * `offset` Number
@@ -532,8 +534,8 @@ should not be used unless you are certain of correctness. Defaults to `false`.
 Works as `buffer.writeUInt16*`, except value is written out as a two's
 complement signed integer into `buffer`.
 
-## buffer.writeInt32LE(value, offset, [noAssert])
-## buffer.writeInt32BE(value, offset, [noAssert])
+### buf.writeInt32LE(value, offset, [noAssert])
+### buf.writeInt32BE(value, offset, [noAssert])
 
 * `value` Number
 * `offset` Number
@@ -550,8 +552,8 @@ should not be used unless you are certain of correctness. Defaults to `false`.
 Works as `buffer.writeUInt32*`, except value is written out as a two's
 complement signed integer into `buffer`.
 
-## buffer.writeFloatLE(value, offset, [noAssert])
-## buffer.writeFloatBE(value, offset, [noAssert])
+### buf.writeFloatLE(value, offset, [noAssert])
+### buf.writeFloatBE(value, offset, [noAssert])
 
 * `value` Number
 * `offset` Number
@@ -579,8 +581,8 @@ Example:
     // <Buffer 4f 4a fe bb>
     // <Buffer bb fe 4a 4f>
 
-## buffer.writeDoubleLE(value, offset, [noAssert])
-## buffer.writeDoubleBE(value, offset, [noAssert])
+### buf.writeDoubleLE(value, offset, [noAssert])
+### buf.writeDoubleBE(value, offset, [noAssert])
 
 * `value` Number
 * `offset` Number
@@ -608,7 +610,7 @@ Example:
     // <Buffer 43 eb d5 b7 dd f9 5f d7>
     // <Buffer d7 5f f9 dd b7 d5 eb 43>
 
-## buffer.fill(value, [offset], [end])
+### buf.fill(value, [offset], [end])
 
 * `value`
 * `offset` Number, Optional
@@ -623,7 +625,21 @@ buffer.
 
 ## buffer.INSPECT_MAX_BYTES
 
-* Number
+* Number, Default: 50
 
 How many bytes will be returned when `buffer.inspect()` is called. This can
 be overridden by user modules.
+
+Note that this is a property on the buffer module returned by
+`require('buffer')`, not on the Buffer global, or a buffer instance.
+
+## Class: SlowBuffer
+
+This class is primarily for internal use.  JavaScript programs should
+use Buffer instead of using SlowBuffer.
+
+In order to avoid the overhead of allocating many C++ Buffer objects for
+small blocks of memory in the lifetime of a server, Node allocates memory
+in 8Kb (8192 byte) chunks.  If a buffer is smaller than this size, then it
+will be backed by a parent SlowBuffer object.  If it is larger than this,
+then Node will allocate a SlowBuffer slab for it directly.
