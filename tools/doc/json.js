@@ -240,6 +240,7 @@ function processList(section) {
         }
         return true;
       });
+      parseSignature(section.textRaw, sig);
       break;
 
     case 'property':
@@ -262,7 +263,45 @@ function processList(section) {
 
   // section.listParsed = values;
   delete section.list;
+}
 
+
+// textRaw = "someobject.someMethod(a, [b=100], [c])"
+function parseSignature(text, sig) {
+  var params = text.match(paramExpr);
+  if (!params) return;
+  params = params[1];
+  // the ] is irrelevant. [ indicates optionalness.
+  params = params.replace(/\]/g, '');
+  params = params.split(/,/)
+  params.forEach(function(p, i, _) {
+    p = p.trim();
+    if (!p) return;
+    var param = sig.params[i];
+    var optional = false;
+    var def;
+    // [foo] -> optional
+    if (p.charAt(0) === '[') {
+      optional = true;
+      p = p.substr(1);
+    }
+    var eq = p.indexOf('=');
+    if (eq !== -1) {
+      def = p.substr(eq + 1);
+      p = p.substr(0, eq);
+    }
+    if (!param) {
+      param = sig.params[i] = { name: p };
+    }
+    // at this point, the name should match.
+    if (p !== param.name) {
+      console.error('Warning: invalid param "%s"', p);
+      console.error(' > ' + JSON.stringify(param));
+      console.error(' > ' + text);
+    }
+    if (optional) param.optional = true;
+    if (def !== undefined) param.default = def;
+  });
 }
 
 
@@ -273,16 +312,16 @@ function parseListItem(item) {
   // the goal here is to find the name, type, default, and optional.
   // anything left over is 'desc'
   var text = item.textRaw.trim();
-  text = text.replace(/^(Argument|Param)s?\s*:?\s*/i, '');
+  // text = text.replace(/^(Argument|Param)s?\s*:?\s*/i, '');
 
   text = text.replace(/^, /, '').trim();
-  var retExpr = /^Returns?\s*:?\s*/i;
+  var retExpr = /^returns?\s*:?\s*/i;
   var ret = text.match(retExpr);
   if (ret) {
     item.name = 'return';
     text = text.replace(retExpr, '');
   } else {
-    var nameExpr = /^['`"]?([^'`": ]+)['`"]?\s*:?\s*/;
+    var nameExpr = /^['`"]?([^'`": \{]+)['`"]?\s*:?\s*/;
     var name = text.match(nameExpr);
     if (name) {
       item.name = name[1];
@@ -290,24 +329,23 @@ function parseListItem(item) {
     }
   }
 
-  text = text.replace(/^, /, '').trim();
-  var defaultExpr = /default\s*[:=]?\s*['"`]?([^, '"`]*)['"`]?/i;
+  text = text.trim();
+  var defaultExpr = /\(default\s*[:=]?\s*['"`]?([^, '"`]*)['"`]?\)/i;
   var def = text.match(defaultExpr);
   if (def) {
     item.default = def[1];
     text = text.replace(defaultExpr, '');
   }
 
-  text = text.replace(/^, /, '').trim();
-  var typeExpr =
-      /^((?:[a-zA-Z]* )?object|string|bool(?:ean)?|regexp?|null|function|number|integer)/i;
+  text = text.trim();
+  var typeExpr = /^\{([^\}]+)\}/;
   var type = text.match(typeExpr);
   if (type) {
     item.type = type[1];
     text = text.replace(typeExpr, '');
   }
 
-  text = text.replace(/^, /, '').trim();
+  text = text.trim();
   var optExpr = /^Optional\.|(?:, )?Optional$/;
   var optional = text.match(optExpr);
   if (optional) {
@@ -336,6 +374,7 @@ function finishSection(section, parent) {
   }
 
   if (section.desc && Array.isArray(section.desc)) {
+    section.desc.links = section.desc.links || [];
     section.desc = marked.parser(section.desc);
   }
 
@@ -427,11 +466,13 @@ function deepCopy_(src) {
 var eventExpr = /^Event:?\s*['"]?([^"']+).*$/i;
 var classExpr = /^Class:\s*([^ ]+).*?$/i;
 var propExpr = /^(?:property:?\s*)?[^\.]+\.([^ \.\(\)]+)\s*?$/i;
+var braceExpr = /^(?:property:?\s*)?[^\.\[]+(\[[^\]]+\])\s*?$/i;
 var classMethExpr =
   /^class\s*method\s*:?[^\.]+\.([^ \.\(\)]+)\([^\)]*\)\s*?$/i;
 var methExpr =
   /^(?:method:?\s*)?[^\.]+\.([^ \.\(\)]+)\([^\)]*\)\s*?$/i;
 var newExpr = /^new ([A-Z][a-z]+)\([^\)]*\)\s*?$/;
+var paramExpr = /\((.*)\);?$/;
 
 function newSection(tok) {
   var section = {};
@@ -443,6 +484,9 @@ function newSection(tok) {
   } else if (text.match(classExpr)) {
     section.type = 'class';
     section.name = text.replace(classExpr, '$1');
+  } else if (text.match(braceExpr)) {
+    section.type = 'property';
+    section.name = text.replace(braceExpr, '$1');
   } else if (text.match(propExpr)) {
     section.type = 'property';
     section.name = text.replace(propExpr, '$1');

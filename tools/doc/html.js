@@ -18,17 +18,16 @@ function render(lexed, filename, template, cb) {
 
   filename = path.basename(filename, '.markdown');
 
+  lexed = parseLists(lexed);
+
   // generate the table of contents.
   // this mutates the lexed contents in-place.
   buildToc(lexed, filename, function(er, toc) {
     if (er) return cb(er);
 
     template = template.replace(/__FILENAME__/g, filename);
-
     template = template.replace(/__SECTION__/g, section);
-
     template = template.replace(/__VERSION__/g, process.version);
-
     template = template.replace(/__TOC__/g, toc);
 
     // content has to be the last thing we do with
@@ -38,6 +37,69 @@ function render(lexed, filename, template, cb) {
 
     cb(null, template);
   });
+}
+
+
+// just update the list item text in-place.
+// lists that come right after a heading are what we're after.
+function parseLists(input) {
+  var state = null;
+  var depth = 0;
+  var output = [];
+  output.links = input.links;
+  input.forEach(function(tok) {
+    if (state === null) {
+      if (tok.type === 'heading') {
+        state = 'AFTERHEADING';
+      }
+      output.push(tok);
+      return;
+    }
+    if (state === 'AFTERHEADING') {
+      if (tok.type === 'code') return;
+      if (tok.type === 'list_start') {
+        state = 'LIST';
+        if (depth === 0) {
+          output.push({ type:'html', text: '<div class="signature">' });
+        }
+        depth++;
+        output.push(tok);
+        return;
+      }
+      state = null;
+      output.push(tok);
+      return;
+    }
+    if (state === 'LIST') {
+      if (tok.type === 'list_start') {
+        depth++;
+        output.push(tok);
+        return;
+      }
+      if (tok.type === 'list_end') {
+        depth--;
+        if (depth === 0) {
+          state = null;
+          output.push({ type:'html', text: '</div>' });
+        }
+        output.push(tok);
+        return;
+      }
+      if (tok.text) {
+        tok.text = parseListItem(tok.text);
+      }
+    }
+    output.push(tok);
+  });
+
+  return output;
+}
+
+
+function parseListItem(text) {
+  text = text.replace(/\{([^\}]+)\}/, '<span class="type">$1</span>');
+  //XXX maybe put more stuff here?
+  return text;
 }
 
 
