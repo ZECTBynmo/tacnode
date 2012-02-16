@@ -43,19 +43,19 @@ Please try it out and provide feedback.
 
 ## cluster.settings
 
-* Object
-  * exec: String, file path to worker file.  Default: `__filename`
-  * args: Array, string arguments passed to worker.
-    Default: `process.argv.slice(2)`
-  * silent: Boolean, whether or not to send output to parent's stdio.
-    Default: `false`
+* {Object}
+  * `exec` {String} file path to worker file.  (Default=`__filename`)
+  * `args` {Array} string arguments passed to worker.
+    (Default=`process.argv.slice(2)`)
+  * `silent` {Boolean} whether or not to send output to parent's stdio.
+    (Default=`false`)
 
 All settings set by the `.setupMaster` is stored in this settings object.
 This object is not supposed to be change or set manually, by you.
 
 ## cluster.isMaster
 
-* Boolean
+* {Boolean}
 
 True if the process is a master. This is determined
 by the `process.env.NODE_UNIQUE_ID`. If `process.env.NODE_UNIQUE_ID` is
@@ -63,7 +63,7 @@ undefined, then `isMaster` is `true`.
 
 ## cluster.isWorker
 
-* Boolean
+* {Boolean}
 
 This boolean flag is true if the process is a worker forked from a master.
 If the `process.env.NODE_UNIQUE_ID` is set to a value, then
@@ -71,7 +71,7 @@ If the `process.env.NODE_UNIQUE_ID` is set to a value, then
 
 ## Event: 'fork'
 
-* Argument: `worker` object
+* `worker` {Worker object}
 
 When a new worker is forked the cluster module will emit a 'fork' event.
 This can be used to log worker activity, and create you own timeout.
@@ -94,7 +94,7 @@ This can be used to log worker activity, and create you own timeout.
 
 ## Event: 'online'
 
-* Argument: `worker` object
+* `worker` {Worker object}
 
 After forking a new worker, the worker should respond with a online message.
 When the master receives a online message it will emit such event.
@@ -108,7 +108,7 @@ being executed.
 
 ## Event: 'listening'
 
-* Argument: `worker` object
+* `worker` {Worker object}
 
 When calling `listen()` from a worker, a 'listening' event is automatically assigned
 to the server instance. When the server is listening a message is send to the master
@@ -120,7 +120,7 @@ where the 'listening' event is emitted.
 
 ## Event: 'death'
 
-* Argument: `worker` object
+* `worker` {Worker object}
 
 When any of the workers die the cluster module will emit the 'death' event.
 This can be used to restart the worker by calling `fork()` again.
@@ -130,9 +130,9 @@ This can be used to restart the worker by calling `fork()` again.
       cluster.fork();
     });
 
-## Event 'setup'
+## Event: 'setup'
 
-* Argument: `worker` object
+* `worker` {Worker object}
 
 When the `.setupMaster()` function has been executed this event emits.
 If `.setupMaster()` was not executed before `fork()` this function will
@@ -140,12 +140,12 @@ call `.setupMaster()` with no arguments.
 
 ## cluster.setupMaster([settings])
 
-* `settings` Object, Optional
-  * exec: String, file path to worker file.  Default: `__filename`
-  * args: Array, string arguments passed to worker.
-    Default: `process.argv.slice(2)`
-  * silent: Boolean, whether or not to send output to parent's stdio.
-    Default: `false`
+* `settings` {Object}
+  * `exec` {String} file path to worker file.  (Default=`__filename`)
+  * `args` {Array} string arguments passed to worker.
+    (Default=`process.argv.slice(2)`)
+  * `silent` {Boolean} whether or not to send output to parent's stdio.
+    (Default=`false`)
 
 The `setupMaster` is used to change the default 'fork' behavior. It takes
 one option object argument.
@@ -162,27 +162,26 @@ Example:
 
 ## cluster.fork([env])
 
-* `env` Object, Optional.  Key/value pairs to add to child process
-  environment.
-* Return: Worker Object
+* `env` {Object} Key/value pairs to add to child process environment.
+* return {Worker object}
 
 Spawn a new worker process. This can only be called from the master process.
 
 ## cluster.settings
 
-* Object
-  * exec: String, file path to worker file.  Default: `__filename`
-  * args: Array, string arguments passed to worker.
-    Default: `process.argv.slice(2)`
-  * silent: Boolean, whether or not to send output to parent's stdio.
-    Default: `false`
+* {Object}
+  * `exec` {String} file path to worker file.  Default: `__filename`
+  * `args` {Array} string arguments passed to worker.
+    (Default=`process.argv.slice(2)`)
+  * `silent` {Boolean} whether or not to send output to parent's stdio.
+    (Default=`false`)
 
 All settings set by the `.setupMaster` is stored in this settings object.
-This object is not supposed to be change or set manually, by you.
+This object is not supposed to be change or set manually.
 
 ## cluster.workers
 
-* Object
+* {Object}
 
 In the cluster all living worker objects are stored in this object by there
 `uniqueID` as the key. This makes it easy to loop through all living workers.
@@ -212,21 +211,26 @@ it can be obtained using `cluster.worker`.
 
 ### worker.uniqueID
 
-* String
+* {String}
 
 Each new worker is given its own unique id, this id is stored in the
 `uniqueID`.
 
+While a worker is alive, this is the key that indexes it in
+cluster.workers
+
 ### worker.process
 
-* ChildProcess object
+* {ChildProcess object}
 
-All workers are created using `child_process.fork()`, the returned objecto
+All workers are created using `child_process.fork()`, the returned object
 from this function is stored in process.
+
+See: [Child Process module](child_process.html)
 
 ### worker.suicide
 
-* Boolean
+* {Boolean}
 
 This property is a boolean. It is set when a worker dies, until then it is
 `undefined`.  It is true if the worker was killed using the `.destroy()`
@@ -234,8 +238,8 @@ method, and false otherwise.
 
 ### worker.send(message, [sendHandle])
 
-* `message` Object
-* `sendHandle` Handle object, Optional
+* `message` {Object}
+* `sendHandle` {Handle object}
 
 This function is equal to the send methods provided by
 `child_process.fork()`.  In the master you should use this function to
@@ -271,7 +275,7 @@ a suicide boolean is set to true.
 
 ### Event: 'message'
 
-* Argument: `message` Object
+* `message` {Object}
 
 This event is the same as the one provided by `child_process.fork()`.
 In the master you should use this event, however in a worker you can also use
@@ -318,7 +322,7 @@ in the master process using the message system:
 
 ### Event: 'online'
 
-* Argument: `worker` Worker object
+* `worker` {Worker object}
 
 Same as the `cluster.on('online')` event, but emits only when the state change
 on the specified worker.
@@ -329,7 +333,7 @@ on the specified worker.
 
 ### Event: 'listening'
 
-* Argument: `worker` Worker object
+* `worker` {Worker object}
 
 Same as the `cluster.on('listening')` event, but emits only when the state change
 on the specified worker.
@@ -340,7 +344,7 @@ on the specified worker.
 
 ### Event: 'death'
 
-* Argument: `worker` Worker object
+* `worker` {Worker object}
 
 Same as the `cluster.on('death')` event, but emits only when the state change
 on the specified worker.

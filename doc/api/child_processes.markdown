@@ -24,8 +24,8 @@ The ChildProcess class is not intended to be used directly.  Use the
 
 ### Event:  'exit'
 
-* `code` Number, the exit code, if it exited normally.
-* `signal` String, the signal passed to kill the child process, if it
+* `code` {Number} the exit code, if it exited normally.
+* `signal` {String} the signal passed to kill the child process, if it
   was killed by the parent.
 
 This event is emitted after the child process ends. If the process terminated
@@ -44,7 +44,7 @@ An alternative way to check if you can send messages is to see if the
 
 ### child.stdin
 
-* Stream object
+* {Stream object}
 
 A `Writable Stream` that represents the child process's `stdin`.
 Closing this stream via `end()` often causes the child process to terminate.
@@ -54,7 +54,7 @@ not be set.
 
 ### child.stdout
 
-* Stream object
+* {Stream object}
 
 A `Readable Stream` that represents the child process's `stdout`.
 
@@ -63,7 +63,7 @@ not be set.
 
 ### child.stderr
 
-* Stream object
+* {Stream object}
 
 A `Readable Stream` that represents the child process's `stderr`.
 
@@ -72,7 +72,7 @@ not be set.
 
 ### child.pid
 
-* Integer
+* {Integer}
 
 The PID of the child process.
 
@@ -86,7 +86,7 @@ Example:
 
 ### child.kill([signal])
 
-* `signal` String
+* `signal` {String}
 
 Send a signal to the child process. If no argument is given, the process will
 be sent `'SIGTERM'`. See `signal(7)` for a list of available signals.
@@ -108,8 +108,8 @@ See `kill(2)`
 
 ### child.send(message, [sendHandle])
 
-* `message` Object
-* `sendHandle` Handle object, Optional
+* `message` {Object}
+* `sendHandle` {Handle object}
 
 Send a message (and, optionally, a handle object) to a child process.
 
@@ -117,15 +117,15 @@ See `child_process.fork()` for details.
 
 ## child_process.spawn(command, [args], [options])
 
-* `command` String - The command to run
-* `args` Array - List of string arguments, Optional
-* `options` Object, Optional
-  * `cwd` String - Current working directory of the child process
-  * `customFds` - **Deprecated** File descriptors for the child to use
+* `command` {String} The command to run
+* `args` {Array} List of string arguments
+* `options` {Object}
+  * `cwd` {String} Current working directory of the child process
+  * `customFds` {Array} **Deprecated** File descriptors for the child to use
     for stdio.  (See below)
-  * `env` Object - Environment key-value pairs
-  * `setsid` Boolean
-* Return: ChildProcess object
+  * `env` {Object} Environment key-value pairs
+  * `setsid` {Boolean}
+* return: {ChildProcess object}
 
 Launches a new process with the given `command`, with  command line arguments in `args`.
 If omitted, `args` defaults to an empty Array.
@@ -230,18 +230,21 @@ See also: `child_process.exec()` and `child_process.fork()`
 
 ## child_process.exec(command, [options], callback)
 
-* `command` String - The command to run, with space-separated arguments
-* `options` Object, Optional
-  * `cwd` String - Current working directory of the child process
-  * `customFds` - **Deprecated** File descriptors for the child to use
+* `command` {String} The command to run, with space-separated arguments
+* `options` {Object}
+  * `cwd` {String} Current working directory of the child process
+  * `customFds` {Array} **Deprecated** File descriptors for the child to use
     for stdio.  (See below)
-  * `env` Object - Environment key-value pairs
-  * `setsid` Boolean
-  * `encoding` String, Default: 'utf8'
-  * `timeout` Number, Default: 0
-  * `maxBuffer` Number, Default: 200*1024
-  * `killSignal` String, Default: 'SIGTERM'
-* `callback` Function called with the output when process terminates
+  * `env` {Object} Environment key-value pairs
+  * `setsid` {Boolean}
+  * `encoding` {String} (Default: 'utf8')
+  * `timeout` {Number} (Default: 0)
+  * `maxBuffer` {Number} (Default: 200*1024)
+  * `killSignal` {String} (Default: 'SIGTERM')
+* `callback` {Function} called with the output when process terminates
+  * `code` {Integer} Exit code
+  * `stdout` {Buffer}
+  * `stderr` {Buffer}
 * Return: ChildProcess object
 
 Runs a command in a shell and buffers the output.
@@ -283,18 +286,22 @@ the child process is killed.
 
 ## child_process.execFile(file, args, options, callback)
 
-* `command` String - The command to run, with space-separated arguments
-* `options` Object, Optional
-  * `cwd` String - Current working directory of the child process
-  * `customFds` - **Deprecated** File descriptors for the child to use
+* `file` {String} The filename of the program to run
+* `args` {Array} List of string arguments
+* `options` {Object}
+  * `cwd` {String} Current working directory of the child process
+  * `customFds` {Array} **Deprecated** File descriptors for the child to use
     for stdio.  (See below)
-  * `env` Object - Environment key-value pairs
-  * `setsid` Boolean
-  * `encoding` String, Default: 'utf8'
-  * `timeout` Number, Default: 0
-  * `maxBuffer` Number, Default: 200*1024
-  * `killSignal` String, Default: 'SIGTERM'
-* `callback` Function called with the output when process terminates
+  * `env` {Object} Environment key-value pairs
+  * `setsid` {Boolean}
+  * `encoding` {String} (Default: 'utf8')
+  * `timeout` {Number} (Default: 0)
+  * `maxBuffer` {Number} (Default: 200*1024)
+  * `killSignal` {String} (Default: 'SIGTERM')
+* `callback` {Function} called with the output when process terminates
+  * `code` {Integer} Exit code
+  * `stdout` {Buffer}
+  * `stderr` {Buffer}
 * Return: ChildProcess object
 
 This is similar to `child_process.exec()` except it does not execute a
@@ -302,18 +309,22 @@ subshell but rather the specified file directly. This makes it slightly
 leaner than `child_process.exec`. It has the same options.
 
 
-## child_process.fork(modulePath, [arguments], [options])
+## child_process.fork(modulePath, [args], [options])
 
-* `command` String - The command to run, with space-separated arguments
-* `options` Object, Optional
-  * `cwd` String - Current working directory of the child process
-  * `customFds` - **Deprecated** File descriptors for the child to use
+* `modulePath` {String} The module to run in the child
+* `args` {Array} List of string arguments
+* `options` {Object}
+  * `cwd` {String} Current working directory of the child process
+  * `customFds` {Array} **Deprecated** File descriptors for the child to use
     for stdio.  (See below)
-  * `env` Object - Environment key-value pairs
-  * `setsid` Boolean
-  * `silent` Boolean, If true, child doesn't write to parent's stdout
-    and stderr.
-* `callback` Function called with the output when process terminates
+  * `env` {Object} Environment key-value pairs
+  * `setsid` {Boolean}
+  * `encoding` {String} (Default: 'utf8')
+  * `timeout` {Number} (Default: 0)
+* `callback` {Function} called with the output when process terminates
+  * `code` {Integer} Exit code
+  * `stdout` {Buffer}
+  * `stderr` {Buffer}
 * Return: ChildProcess object
 
 This is a special case of the `spawn()` functionality for spawning Node
