@@ -200,7 +200,7 @@ def host_arch():
 def target_arch():
   return host_arch()
 
-def gcc_optimize_level():
+def gcc_old():
   cc = ['gcc']
   cmd = cc + [ '-dumpversion' ]
   p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -208,9 +208,9 @@ def gcc_optimize_level():
   out = p.communicate()[0]
   gcc_version = (str(out).split('\n'))[0]
   if StrictVersion(gcc_version) >= '4.6.1':
-    return '-O3'
+    return 'no'
   else:
-    return '-O'
+    return 'yes'
 
 def configure_node(o):
   # TODO add gdb
@@ -225,7 +225,7 @@ def configure_node(o):
   # TODO move to node.gyp
   if sys.platform == 'sunos5':
     o['variables']['visibility'] = '' # FIXME -fvisibility=hidden, should be a gcc check
-    o['variables']['gcc_optimize_level'] = gcc_optimize_level() # For bug fix of #2830
+    o['variables']['gcc_old'] = gcc_old() # For bug fix of #2830
 
 def configure_libz(o):
   o['variables']['node_shared_zlib'] = b(options.shared_zlib)
