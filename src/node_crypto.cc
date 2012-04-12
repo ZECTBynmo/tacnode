@@ -82,6 +82,8 @@ static Persistent<String> fingerprint_symbol;
 static Persistent<String> name_symbol;
 static Persistent<String> version_symbol;
 static Persistent<String> ext_key_usage_symbol;
+static Persistent<String> onhandshakestart_sym;
+static Persistent<String> onhandshakedone_sym;
 
 static Persistent<FunctionTemplate> secure_context_constructor;
 
@@ -974,12 +976,18 @@ void Connection::SSLInfoCallback(const SSL *ssl, int where, int ret) {
   if (where & SSL_CB_HANDSHAKE_START) {
     HandleScope scope;
     Connection* c = static_cast<Connection*>(SSL_get_app_data(ssl));
-    MakeCallback(c->handle_, "onhandshakestart", 0, NULL);
+    if (onhandshakestart_sym.IsEmpty()) {
+      onhandshakestart_sym = NODE_PSYMBOL("onhandshakestart");
+    }
+    MakeCallback(c->handle_, onhandshakestart_sym, 0, NULL);
   }
   if (where & SSL_CB_HANDSHAKE_DONE) {
     HandleScope scope;
     Connection* c = static_cast<Connection*>(SSL_get_app_data(ssl));
-    MakeCallback(c->handle_, "onhandshakedone", 0, NULL);
+    if (onhandshakedone_sym.IsEmpty()) {
+      onhandshakedone_sym = NODE_PSYMBOL("onhandshakedone");
+    }
+    MakeCallback(c->handle_, onhandshakedone_sym, 0, NULL);
   }
 }
 

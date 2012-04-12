@@ -235,8 +235,7 @@ static void Tick(void) {
 
   if (tick_callback_sym.IsEmpty()) {
     // Lazily set the symbol
-    tick_callback_sym =
-      Persistent<String>::New(String::NewSymbol("_tickCallback"));
+    tick_callback_sym = NODE_PSYMBOL("_tickCallback");
   }
 
   Local<Value> cb_v = process->Get(tick_callback_sym);
