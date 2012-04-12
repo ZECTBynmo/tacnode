@@ -976,10 +976,11 @@ Handle<Value> FromConstructorTemplate(Persistent<FunctionTemplate>& t,
 //
 // Maybe make this a method of a node::Handle super class
 //
-void MakeCallback(const Handle<Object> object,
-                  const char* method,
-                  int argc,
-                  Handle<Value> argv[]) {
+Handle<Value>
+MakeCallback(const Handle<Object> object,
+             const char* method,
+             int argc,
+             Handle<Value> argv[]) {
   HandleScope scope;
 
   Local<Value> callback_v = object->Get(String::New(method));
@@ -989,13 +990,14 @@ void MakeCallback(const Handle<Object> object,
   assert(callback_v->IsFunction());
   Local<Function> callback = Local<Function>::Cast(callback_v);
 
-  MakeCallback(object, callback, argc, argv);
+  return scope.Close(MakeCallback(object, callback, argc, argv));
 }
 
-void MakeCallback(const Handle<Object> object,
-                  const Handle<Function> callback,
-                  int argc,
-                  Handle<Value> argv[]) {
+Handle<Value>
+MakeCallback(const Handle<Object> object,
+             const Handle<Function> callback,
+             int argc,
+             Handle<Value> argv[]) {
   HandleScope scope;
 
   // TODO Hook for long stack traces to be made here.
@@ -1018,7 +1020,7 @@ void MakeCallback(const Handle<Object> object,
     enter->Call(domain, 0, NULL);
   }
 
-  callback->Call(object, argc, argv);
+  Local<Value> ret = callback->Call(object, argc, argv);
 
   if (try_catch.HasCaught()) {
     FatalException(try_catch);
@@ -1028,6 +1030,8 @@ void MakeCallback(const Handle<Object> object,
     exit = Local<Function>::Cast(domain->Get(exit_symbol));
     exit->Call(domain, 0, NULL);
   }
+
+  return scope.Close(ret);
 }
 
 
