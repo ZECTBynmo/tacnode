@@ -982,10 +982,20 @@ MakeCallback(const Handle<Object> object,
              int argc,
              Handle<Value> argv[]) {
   HandleScope scope;
+  return scope.Close(MakeCallback(object, String::NewSymbol(method), argc, argv));
+}
 
-  Local<Value> callback_v = object->Get(String::New(method));
+Handle<Value>
+MakeCallback(const Handle<Object> object,
+             const Handle<String> symbol,
+             int argc,
+             Handle<Value> argv[]) {
+  HandleScope scope;
+
+  Local<Value> callback_v = object->Get(symbol);
   if (!callback_v->IsFunction()) {
-    fprintf(stderr, "method = %s", method);
+    String::Utf8Value method(symbol);
+    fprintf(stderr, "method = %s", *method);
   }
   assert(callback_v->IsFunction());
   Local<Function> callback = Local<Function>::Cast(callback_v);
