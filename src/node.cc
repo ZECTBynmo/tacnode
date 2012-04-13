@@ -109,6 +109,10 @@ static Persistent<String> listeners_symbol;
 static Persistent<String> uncaught_exception_symbol;
 static Persistent<String> emit_symbol;
 
+static Persistent<String> domain_symbol;
+static Persistent<String> enter_symbol;
+static Persistent<String> exit_symbol;
+
 
 static bool print_eval = false;
 static bool force_repl = false;
@@ -1009,10 +1013,31 @@ MakeCallback(const Handle<Object> object,
 
   TryCatch try_catch;
 
+  if (domain_symbol.IsEmpty()) {
+    domain_symbol = NODE_PSYMBOL("domain");
+    enter_symbol = NODE_PSYMBOL("enter");
+    exit_symbol = NODE_PSYMBOL("exit");
+  }
+
+  Local<Value> domain_v = object->Get(domain_symbol);
+  Local<Object> domain;
+  Local<Function> enter;
+  Local<Function> exit;
+  if (!domain_v->IsUndefined()) {
+    domain = domain_v->ToObject();
+    enter = Local<Function>::Cast(domain->Get(enter_symbol));
+    enter->Call(domain, 0, NULL);
+  }
+
   Local<Value> ret = callback->Call(object, argc, argv);
 
   if (try_catch.HasCaught()) {
     FatalException(try_catch);
+  }
+
+  if (!domain_v->IsUndefined()) {
+    exit = Local<Function>::Cast(domain->Get(exit_symbol));
+    exit->Call(domain, 0, NULL);
   }
 
   return scope.Close(ret);
