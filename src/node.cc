@@ -112,6 +112,7 @@ static Persistent<String> emit_symbol;
 static Persistent<String> domain_symbol;
 static Persistent<String> enter_symbol;
 static Persistent<String> exit_symbol;
+static Persistent<String> disposed_symbol;
 
 
 static bool print_eval = false;
@@ -1017,6 +1018,7 @@ MakeCallback(const Handle<Object> object,
     domain_symbol = NODE_PSYMBOL("domain");
     enter_symbol = NODE_PSYMBOL("enter");
     exit_symbol = NODE_PSYMBOL("exit");
+    disposed_symbol = NODE_PSYMBOL("_disposed");
   }
 
   Local<Value> domain_v = object->Get(domain_symbol);
@@ -1025,6 +1027,10 @@ MakeCallback(const Handle<Object> object,
   Local<Function> exit;
   if (!domain_v->IsUndefined()) {
     domain = domain_v->ToObject();
+    if (domain->Get(disposed_symbol)->BooleanValue() == true) {
+      // domain has been disposed of.
+      return scope.Close(Undefined());
+    }
     enter = Local<Function>::Cast(domain->Get(enter_symbol));
     enter->Call(domain, 0, NULL);
   }
