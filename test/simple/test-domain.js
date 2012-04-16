@@ -27,7 +27,7 @@ var assert = require('assert');
 var domain = require('domain');
 var events = require('events');
 var caught = 0;
-var expectCaught = 7;
+var expectCaught = 8;
 
 var d = new domain.Domain();
 var e = new events.EventEmitter();
@@ -88,6 +88,12 @@ d.on('error', function(er) {
       assert.ok(!er.domain_bound);
       break;
 
+    case 'Cannot call method \'isDirectory\' of undefined':
+      assert.equal(er.domain, d);
+      assert.ok(!er.domain_emitter);
+      assert.ok(!er.domain_bound);
+      break;
+
     default:
       console.error('unexpected error, throwing %j', er.message);
       throw er;
@@ -137,10 +143,31 @@ setTimeout(d.bind(thrower), 100);
 
 // Pass an intercepted function to an fs operation that fails.
 var fs = require('fs');
-fs.readFile('this file does not exist', d.intercept(function(er) {
+fs.open('this file does not exist', 'r', d.intercept(function(er) {
   console.error('should not get here!', er);
   throw new Error('should not get here!');
 }, true));
+
+
+
+// catch thrown errors no matter how many times we enter the event loop
+// this only uses implicit binding, except for the first function
+// passed to d.run().  The rest are implicitly bound by virtue of being
+// set up while in the scope of the d domain.
+d.run(function() {
+  process.nextTick(function() {
+    var i = setInterval(function () {
+      clearInterval(i);
+      setTimeout(function() {
+        fs.stat('this file does not exist', function(er, stat) {
+          // uh oh!  stat isn't set!
+          // pretty common error.
+          console.log(stat.isDirectory());
+        });
+      });
+    });
+  });
+});
 
 
 
