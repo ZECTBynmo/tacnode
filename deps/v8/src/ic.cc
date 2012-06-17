@@ -1511,6 +1511,7 @@ void StoreIC::UpdateCaches(LookupResult* lookup,
       break;
     case CONSTANT_FUNCTION:
     case CONSTANT_TRANSITION:
+    case ELEMENTS_TRANSITION:
       return;
     case HANDLER:
     case NULL_DESCRIPTOR:
@@ -1974,6 +1975,7 @@ void KeyedStoreIC::UpdateCaches(LookupResult* lookup,
     case CALLBACKS:
     case INTERCEPTOR:
     case CONSTANT_TRANSITION:
+    case ELEMENTS_TRANSITION:
       // Always rewrite to the generic case so that we do not
       // repeatedly try to rewrite.
       code = (strict_mode == kStrictMode)

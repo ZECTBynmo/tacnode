@@ -170,14 +170,6 @@ enum CreationFlag {
 };
 
 
-// Indicates whether the search function should expect a sorted or an unsorted
-// array as input.
-enum SearchMode {
-  EXPECT_SORTED,
-  EXPECT_UNSORTED
-};
-
-
 // Instance size sentinel for objects of variable size.
 const int kVariableSizeSentinel = 0;
 
@@ -2435,15 +2427,10 @@ class DescriptorArray: public FixedArray {
   // map uses to encode additional bit fields when the descriptor array is not
   // yet used.
   inline bool IsEmpty();
-  inline bool MayContainTransitions();
-
-  DECL_ACCESSORS(elements_transition_map, Map)
 
   // Returns the number of descriptors in the array.
   int number_of_descriptors() {
-    ASSERT(length() > kFirstIndex ||
-           length() == kTransitionsIndex ||
-           IsEmpty());
+    ASSERT(length() > kFirstIndex || IsEmpty());
     int len = length();
     return len <= kFirstIndex ? 0 : (len - kFirstIndex) / kDescriptorSize;
   }
@@ -2479,12 +2466,6 @@ class DescriptorArray: public FixedArray {
     ASSERT(HasEnumCache());
     return HeapObject::RawField(reinterpret_cast<HeapObject*>(this),
                                 kEnumerationIndexOffset);
-  }
-
-  Object** GetTransitionsSlot() {
-    ASSERT(elements_transition_map() != NULL);
-    return HeapObject::RawField(reinterpret_cast<HeapObject*>(this),
-                                kTransitionsOffset);
   }
 
   // TODO(1399): It should be possible to make room for bit_field3 in the map
@@ -2563,16 +2544,9 @@ class DescriptorArray: public FixedArray {
   MUST_USE_RESULT MaybeObject* CopyInsert(Descriptor* descriptor,
                                           TransitionFlag transition_flag);
 
-  // Indicates whether the search function should expect a sorted or an unsorted
-  // descriptor array as input.
-  enum SharedMode {
-    MAY_BE_SHARED,
-    CANNOT_BE_SHARED
-  };
-
   // Return a copy of the array with all transitions and null descriptors
   // removed. Return a Failure object in case of an allocation failure.
-  MUST_USE_RESULT MaybeObject* RemoveTransitions(SharedMode shared_mode);
+  MUST_USE_RESULT MaybeObject* RemoveTransitions();
 
   // Sort the instance descriptors by the hash codes of their keys.
   // Does not check for duplicates.
@@ -2600,13 +2574,12 @@ class DescriptorArray: public FixedArray {
 
   // Perform a linear search in the instance descriptors represented
   // by this fixed array.  len is the number of descriptor indices that are
-  // valid.
-  int LinearSearch(SearchMode mode, String* name, int len);
+  // valid.  Does not require the descriptors to be sorted.
+  int LinearSearch(String* name, int len);
 
   // Allocates a DescriptorArray, but returns the singleton
   // empty descriptor array object if number_of_descriptors is 0.
-  MUST_USE_RESULT static MaybeObject* Allocate(int number_of_descriptors,
-                                               SharedMode shared_mode);
+  MUST_USE_RESULT static MaybeObject* Allocate(int number_of_descriptors);
 
   // Casting.
   static inline DescriptorArray* cast(Object* obj);
@@ -2615,9 +2588,8 @@ class DescriptorArray: public FixedArray {
   static const int kNotFound = -1;
 
   static const int kBitField3StorageIndex = 0;
-  static const int kTransitionsIndex = 1;
-  static const int kEnumerationIndexIndex = 2;
-  static const int kFirstIndex = 3;
+  static const int kEnumerationIndexIndex = 1;
+  static const int kFirstIndex = 2;
 
   // The length of the "bridge" to the enum cache.
   static const int kEnumCacheBridgeLength = 3;
@@ -2627,8 +2599,8 @@ class DescriptorArray: public FixedArray {
 
   // Layout description.
   static const int kBitField3StorageOffset = FixedArray::kHeaderSize;
-  static const int kTransitionsOffset = kBitField3StorageOffset + kPointerSize;
-  static const int kEnumerationIndexOffset = kTransitionsOffset + kPointerSize;
+  static const int kEnumerationIndexOffset = kBitField3StorageOffset +
+                                             kPointerSize;
   static const int kFirstOffset = kEnumerationIndexOffset + kPointerSize;
 
   // Layout description for the bridge array.
@@ -4734,9 +4706,6 @@ class Map: public HeapObject {
   static bool IsValidElementsTransition(ElementsKind from_kind,
                                         ElementsKind to_kind);
 
-  inline Map* elements_transition_map();
-  inline void set_elements_transition_map(Map* transitioned_map);
-
   // Tells whether the map is attached to SharedFunctionInfo
   // (for inobject slack tracking).
   inline void set_attached_to_shared_function_info(bool value);
@@ -4840,8 +4809,7 @@ class Map: public HeapObject {
 
   // Returns a copy of the map, with all transitions dropped from the
   // instance descriptors.
-  MUST_USE_RESULT MaybeObject* CopyDropTransitions(
-      DescriptorArray::SharedMode shared_mode);
+  MUST_USE_RESULT MaybeObject* CopyDropTransitions();
 
   // Returns the property index for name (only valid for FAST MODE).
   int PropertyIndexFor(String* name);
@@ -4894,15 +4862,23 @@ class Map: public HeapObject {
   // The "shared" flags of both this map and |other| are ignored.
   bool EquivalentToForNormalization(Map* other, PropertyNormalizationMode mode);
 
+  // Returns the contents of this map's descriptor array for the given string.
+  // May return NULL. |safe_to_add_transition| is set to false and NULL
+  // is returned if adding transitions is not allowed.
+  Object* GetDescriptorContents(String* sentinel_name,
+                                bool* safe_to_add_transitions);
+
   // Returns the map that this map transitions to if its elements_kind
   // is changed to |elements_kind|, or NULL if no such map is cached yet.
   // |safe_to_add_transitions| is set to false if adding transitions is not
   // allowed.
-  Map* LookupElementsTransitionMap(ElementsKind elements_kind);
+  Map* LookupElementsTransitionMap(ElementsKind elements_kind,
+                                   bool* safe_to_add_transition);
 
-  // Adds a new transitions for changing the elements kind to |elements_kind|.
-  MUST_USE_RESULT MaybeObject* CreateNextElementsTransition(
-      ElementsKind elements_kind);
+  // Adds an entry to this map's descriptor array for a transition to
+  // |transitioned_map| when its elements_kind is changed to |elements_kind|.
+  MUST_USE_RESULT MaybeObject* AddElementsTransition(
+      ElementsKind elements_kind, Map* transitioned_map);
 
   // Returns the transitioned map for this map with the most generic
   // elements_kind that's found in |candidates|, or null handle if no match is
@@ -5049,6 +5025,7 @@ class Map: public HeapObject {
                               kSize> BodyDescriptor;
 
  private:
+  String* elements_transition_sentinel_name();
   DISALLOW_IMPLICIT_CONSTRUCTORS(Map);
 };
 

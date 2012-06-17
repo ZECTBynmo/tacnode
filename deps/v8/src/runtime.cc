@@ -1236,8 +1236,7 @@ RUNTIME_FUNCTION(MaybeObject*, Runtime_DisableAccessChecks) {
   if (needs_access_checks) {
     // Copy map so it won't interfere constructor's initial map.
     Object* new_map;
-    { MaybeObject* maybe_new_map =
-          old_map->CopyDropTransitions(DescriptorArray::MAY_BE_SHARED);
+    { MaybeObject* maybe_new_map = old_map->CopyDropTransitions();
       if (!maybe_new_map->ToObject(&new_map)) return maybe_new_map;
     }
 
@@ -1255,8 +1254,7 @@ RUNTIME_FUNCTION(MaybeObject*, Runtime_EnableAccessChecks) {
   if (!old_map->is_access_check_needed()) {
     // Copy map so it won't interfere constructor's initial map.
     Object* new_map;
-    { MaybeObject* maybe_new_map =
-          old_map->CopyDropTransitions(DescriptorArray::MAY_BE_SHARED);
+    { MaybeObject* maybe_new_map = old_map->CopyDropTransitions();
       if (!maybe_new_map->ToObject(&new_map)) return maybe_new_map;
     }
 
@@ -10289,6 +10287,7 @@ static MaybeObject* DebugLookupResultValue(Heap* heap,
     }
     case INTERCEPTOR:
     case MAP_TRANSITION:
+    case ELEMENTS_TRANSITION:
     case CONSTANT_TRANSITION:
     case NULL_DESCRIPTOR:
       return heap->undefined_value();

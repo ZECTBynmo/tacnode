@@ -3491,7 +3491,7 @@ void MacroAssembler::CompareMapAndBranch(Register obj_map,
       Map* current_map = *map;
       while (CanTransitionToMoreGeneralFastElementsKind(kind, packed)) {
         kind = GetNextMoreGeneralFastElementsKind(kind, packed);
-        current_map = current_map->LookupElementsTransitionMap(kind);
+        current_map = current_map->LookupElementsTransitionMap(kind, NULL);
         if (!current_map) break;
         Branch(early_success, eq, obj_map, right);
         right = Operand(Handle<Map>(current_map));

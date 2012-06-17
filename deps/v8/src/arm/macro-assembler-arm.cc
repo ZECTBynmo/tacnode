@@ -2016,7 +2016,7 @@ void MacroAssembler::CompareMap(Register obj_map,
       Map* current_map = *map;
       while (CanTransitionToMoreGeneralFastElementsKind(kind, packed)) {
         kind = GetNextMoreGeneralFastElementsKind(kind, packed);
-        current_map = current_map->LookupElementsTransitionMap(kind);
+        current_map = current_map->LookupElementsTransitionMap(kind, NULL);
         if (!current_map) break;
         b(eq, early_success);
         cmp(obj_map, Operand(Handle<Map>(current_map)));
