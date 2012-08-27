@@ -679,6 +679,7 @@ HeapObject* Deserializer::GetAddressFromStart(int space) {
 void Deserializer::Deserialize() {
   isolate_ = Isolate::Current();
   ASSERT(isolate_ != NULL);
+  {
   // Don't GC while deserializing - just expand the heap.
   AlwaysAllocateScope always_allocate;
   // Don't use the free lists while deserializing.
@@ -704,6 +705,11 @@ void Deserializer::Deserialize() {
   }
 }
 
+  // Issue code events for newly deserialized code objects.
+  LOG_CODE_EVENT(isolate_, LogCodeObjects());
+  LOG_CODE_EVENT(isolate_, LogCompiledFunctions());
+}
+
 
 void Deserializer::DeserializePartial(Object** root) {
   isolate_ = Isolate::Current();
@@ -714,7 +720,17 @@ void Deserializer::DeserializePartial(Object** root) {
   if (external_reference_decoder_ == NULL) {
     external_reference_decoder_ = new ExternalReferenceDecoder();
   }
+
+  // Keep track of the code space start and end pointers in case new
+  // code objects were unserialized
+  OldSpace* code_space = isolate_->heap()->code_space();
+  Address start_address = code_space->top();
   VisitPointer(root);
+
+  // There's no code deserialized here. If this assert fires
+  // then that's changed and logging should be added to notify
+  // the profiler et al of the new code.
+  CHECK_EQ(start_address, code_space->top());
 }
 
 
