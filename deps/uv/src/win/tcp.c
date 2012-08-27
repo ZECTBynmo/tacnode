@@ -27,7 +27,6 @@
 #include "stream-inl.h"
 #include "req-inl.h"
 
-
 /*
  * Threshold of active tcp streams for which to preallocate tcp read buffers.
  * (Due to node slab allocator performing poorly under this pattern,
@@ -148,6 +147,7 @@ int uv_tcp_init(uv_loop_t* loop, uv_tcp_t* handle) {
   handle->func_acceptex = NULL;
   handle->func_connectex = NULL;
   handle->processed_accepts = 0;
+  handle->accept_idle = NULL;
 
   loop->counters.tcp_init++;
 
@@ -500,6 +500,14 @@ static void uv_tcp_queue_read(uv_loop_t* loop, uv_tcp_t* handle) {
 }
 
 
+static void init_accept_idle(uv_tcp_t* handle) {
+  handle->accept_idle = malloc(sizeof *handle->accept_idle);
+  uv_idle_init(handle->loop, handle->accept_idle);
+  handle->accept_idle->flags |= UV__HANDLE_INTERNAL;
+  handle->accept_idle->data = handle;
+}
+
+
 int uv_tcp_listen(uv_tcp_t* handle, int backlog, uv_connection_cb cb) {
   uv_loop_t* loop = handle->loop;
   unsigned int i, simultaneous_accepts;
@@ -573,7 +581,17 @@ int uv_tcp_listen(uv_tcp_t* handle, int backlog, uv_connection_cb cb) {
     }
   }
 
+  if (handle->flags & UV_HANDLE_TCP_SINGLE_ACCEPT)
+    init_accept_idle(handle);
+
   return 0;
+}
+
+
+static void on_accept_idle(uv_idle_t* idle_handle, int status) {
+  uv_tcp_t* tcp_handle = (uv_tcp_t*) idle_handle->data;
+  uv_tcp_queue_accept(tcp_handle, &tcp_handle->accept_reqs[0]);
+  uv_idle_stop(idle_handle);
 }
 
 
@@ -610,23 +628,27 @@ int uv_tcp_accept(uv_tcp_t* server, uv_tcp_t* client) {
 
   if (!(server->flags & UV_HANDLE_CLOSING)) {
     /* Check if we're in a middle of changing the number of pending accepts. */
-    if (!(server->flags & UV_HANDLE_TCP_ACCEPT_STATE_CHANGING)) {
+    if (!(server->flags & UV_HANDLE_TCP_SINGLE_ACCEPT)) {
       uv_tcp_queue_accept(server, req);
     } else {
-      /* We better be switching to a single pending accept. */
-      assert(server->flags & UV_HANDLE_TCP_SINGLE_ACCEPT);
+      if (!(server->flags & UV_HANDLE_TCP_ACCEPT_STATE_CHANGING)) {
+        uv_idle_start(server->accept_idle, on_accept_idle);
+      } else {
+        /* We better be switching to a single pending accept. */
+        assert(server->flags & UV_HANDLE_TCP_SINGLE_ACCEPT);
 
-      server->processed_accepts++;
+        server->processed_accepts++;
 
-      if (server->processed_accepts >= uv_simultaneous_server_accepts) {
-        server->processed_accepts = 0;
-        /*
-         * All previously queued accept requests are now processed.
-         * We now switch to queueing just a single accept.
-         */
-        uv_tcp_queue_accept(server, &server->accept_reqs[0]);
-        server->flags &= ~UV_HANDLE_TCP_ACCEPT_STATE_CHANGING;
-        server->flags |= UV_HANDLE_TCP_SINGLE_ACCEPT;
+        if (server->processed_accepts >= uv_simultaneous_server_accepts) {
+          server->processed_accepts = 0;
+          /*
+           * All previously queued accept requests are now processed.
+           * We now switch to queueing just a single accept.
+           */
+          uv_idle_start(server->accept_idle, on_accept_idle);
+          server->flags &= ~UV_HANDLE_TCP_ACCEPT_STATE_CHANGING;
+          server->flags |= UV_HANDLE_TCP_SINGLE_ACCEPT;
+        }
       }
     }
   }
@@ -1285,6 +1307,7 @@ int uv_tcp_simultaneous_accepts(uv_tcp_t* handle, int enable) {
   /* Flip the changing flag if we have already queued multiple accepts. */
   if (handle->flags & UV_HANDLE_LISTENING) {
     handle->flags |= UV_HANDLE_TCP_ACCEPT_STATE_CHANGING;
+    init_accept_idle(handle);
   }
 
   return 0;
@@ -1390,6 +1413,10 @@ void uv_tcp_close(uv_loop_t* loop, uv_tcp_t* tcp) {
   if (close_socket) {
     closesocket(tcp->socket);
     tcp->flags |= UV_HANDLE_TCP_SOCKET_CLOSED;
+  }
+
+  if (tcp->accept_idle) {
+    uv_close((uv_handle_t*) tcp->accept_idle, (uv_close_cb) free);
   }
 
   uv__handle_start(tcp);
