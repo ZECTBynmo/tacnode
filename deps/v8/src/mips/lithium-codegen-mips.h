@@ -43,26 +43,25 @@ class SafepointGenerator;
 
 class LCodeGen BASE_EMBEDDED {
  public:
-  LCodeGen(LChunk* chunk, MacroAssembler* assembler, CompilationInfo* info,
-           Zone* zone)
-      : chunk_(chunk),
+  LCodeGen(LChunk* chunk, MacroAssembler* assembler, CompilationInfo* info)
+      : zone_(info->zone()),
+        chunk_(static_cast<LPlatformChunk*>(chunk)),
         masm_(assembler),
         info_(info),
         current_block_(-1),
         current_instruction_(-1),
         instructions_(chunk->instructions()),
-        deoptimizations_(4, zone),
-        deopt_jump_table_(4, zone),
-        deoptimization_literals_(8, zone),
+        deoptimizations_(4, info->zone()),
+        deopt_jump_table_(4, info->zone()),
+        deoptimization_literals_(8, info->zone()),
         inlined_function_count_(0),
         scope_(info->scope()),
         status_(UNUSED),
-        translations_(zone),
-        deferred_(8, zone),
+        translations_(info->zone()),
+        deferred_(8, info->zone()),
         osr_pc_offset_(-1),
         last_lazy_deopt_pc_(0),
-        safepoints_(zone),
-        zone_(zone),
+        safepoints_(info->zone()),
         resolver_(this),
         expected_safepoint_kind_(Safepoint::kSimple) {
     PopulateDeoptimizationLiteralsWithInlinedFunctions();
@@ -129,6 +128,15 @@ class LCodeGen BASE_EMBEDDED {
   void DoParallelMove(LParallelMove* move);
   void DoGap(LGap* instr);
 
+  MemOperand PrepareKeyedOperand(Register key,
+                                 Register base,
+                                 bool key_is_constant,
+                                 int constant_key,
+                                 int element_size,
+                                 int shift_size,
+                                 int additional_index,
+                                 int additional_offset);
+
   // Emit frame translation commands for an environment.
   void WriteTranslation(LEnvironment* environment, Translation* translation);
 
@@ -154,7 +162,7 @@ class LCodeGen BASE_EMBEDDED {
     return info()->is_classic_mode() ? kNonStrictMode : kStrictMode;
   }
 
-  LChunk* chunk() const { return chunk_; }
+  LPlatformChunk* chunk() const { return chunk_; }
   Scope* scope() const { return scope_; }
   HGraph* graph() const { return chunk_->graph(); }
 
@@ -354,7 +362,8 @@ class LCodeGen BASE_EMBEDDED {
 
   void EnsureSpaceForLazyDeopt();
 
-  LChunk* const chunk_;
+  Zone* zone_;
+  LPlatformChunk* const chunk_;
   MacroAssembler* const masm_;
   CompilationInfo* const info_;
 
@@ -375,8 +384,6 @@ class LCodeGen BASE_EMBEDDED {
   // Builder that keeps track of safepoints in the code. The table
   // itself is emitted at the end of the generated code.
   SafepointTableBuilder safepoints_;
-
-  Zone* zone_;
 
   // Compiler from a set of parallel moves to a sequential list of moves.
   LGapResolver resolver_;

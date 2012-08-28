@@ -31,7 +31,7 @@
 #ifndef V8_SHARED
 #include "allocation.h"
 #include "hashmap.h"
-#include "smart-array-pointer.h"
+#include "smart-pointers.h"
 #include "v8.h"
 #else
 #include "../include/v8.h"
@@ -67,7 +67,7 @@ class CounterCollection {
   CounterCollection();
   Counter* GetNextCounter();
  private:
-  static const unsigned kMaxCounters = 256;
+  static const unsigned kMaxCounters = 512;
   uint32_t magic_number_;
   uint32_t max_counters_;
   uint32_t max_name_size_;
@@ -322,7 +322,10 @@ class Shell : public i::AllStatic {
   static Handle<Value> Uint32Array(const Arguments& args);
   static Handle<Value> Float32Array(const Arguments& args);
   static Handle<Value> Float64Array(const Arguments& args);
-  static Handle<Value> PixelArray(const Arguments& args);
+  static Handle<Value> Uint8ClampedArray(const Arguments& args);
+  static Handle<Value> ArrayBufferSlice(const Arguments& args);
+  static Handle<Value> ArraySubArray(const Arguments& args);
+  static Handle<Value> ArraySet(const Arguments& args);
   // The OS object on the global object contains methods for performing
   // operating system calls:
   //
@@ -383,8 +386,17 @@ class Shell : public i::AllStatic {
   static void RunShell();
   static bool SetOptions(int argc, char* argv[]);
   static Handle<ObjectTemplate> CreateGlobalTemplate();
-  static Handle<Value> CreateExternalArrayBuffer(int32_t size);
-  static Handle<Value> CreateExternalArrayBuffer(const Arguments& args);
+  static Handle<FunctionTemplate> CreateArrayBufferTemplate(InvocationCallback);
+  static Handle<FunctionTemplate> CreateArrayTemplate(InvocationCallback);
+  static Handle<Value> CreateExternalArrayBuffer(Handle<Object> buffer,
+                                                 int32_t size);
+  static Handle<Object> CreateExternalArray(Handle<Object> array,
+                                            Handle<Object> buffer,
+                                            ExternalArrayType type,
+                                            int32_t length,
+                                            int32_t byteLength,
+                                            int32_t byteOffset,
+                                            int32_t element_size);
   static Handle<Value> CreateExternalArray(const Arguments& args,
                                            ExternalArrayType type,
                                            int32_t element_size);

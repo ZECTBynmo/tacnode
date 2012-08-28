@@ -352,6 +352,38 @@ TEST(GetScriptLineNumber) {
 }
 
 
+// Test that optimized code for different closures is actually shared
+// immediately by the FastNewClosureStub when run in the same context.
+TEST(OptimizedCodeSharing) {
+  // Skip test if --cache-optimized-code is not activated by default because
+  // FastNewClosureStub that is baked into the snapshot is incorrect.
+  if (!FLAG_cache_optimized_code) return;
+  FLAG_allow_natives_syntax = true;
+  InitializeVM();
+  v8::HandleScope scope;
+  for (int i = 0; i < 10; i++) {
+    LocalContext env;
+    env->Global()->Set(v8::String::New("x"), v8::Integer::New(i));
+    CompileRun("function MakeClosure() {"
+               "  return function() { return x; };"
+               "}"
+               "var closure0 = MakeClosure();"
+               "%DebugPrint(closure0());"
+               "%OptimizeFunctionOnNextCall(closure0);"
+               "%DebugPrint(closure0());"
+               "var closure1 = MakeClosure();"
+               "var closure2 = MakeClosure();");
+    Handle<JSFunction> fun1 = v8::Utils::OpenHandle(
+        *v8::Local<v8::Function>::Cast(env->Global()->Get(v8_str("closure1"))));
+    Handle<JSFunction> fun2 = v8::Utils::OpenHandle(
+        *v8::Local<v8::Function>::Cast(env->Global()->Get(v8_str("closure2"))));
+    CHECK(fun1->IsOptimized() || !fun1->IsOptimizable());
+    CHECK(fun2->IsOptimized() || !fun2->IsOptimizable());
+    CHECK_EQ(fun1->code(), fun2->code());
+  }
+}
+
+
 #ifdef ENABLE_DISASSEMBLER
 static Handle<JSFunction> GetJSFunction(v8::Handle<v8::Object> obj,
                                  const char* property_name) {
@@ -374,15 +406,16 @@ static void CheckCodeForUnsafeLiteral(Handle<JSFunction> f) {
     Address end = pc + decode_size;
 
     v8::internal::EmbeddedVector<char, 128> decode_buffer;
+    v8::internal::EmbeddedVector<char, 128> smi_hex_buffer;
+    Smi* smi = Smi::FromInt(12345678);
+    OS::SNPrintF(smi_hex_buffer, "0x%lx", reinterpret_cast<intptr_t>(smi));
     while (pc < end) {
       int num_const = d.ConstantPoolSizeAt(pc);
       if (num_const >= 0) {
         pc += (num_const + 1) * kPointerSize;
       } else {
         pc += d.InstructionDecode(decode_buffer, pc);
-        CHECK(strstr(decode_buffer.start(), "mov eax,0x178c29c") == NULL);
-        CHECK(strstr(decode_buffer.start(), "push 0x178c29c") == NULL);
-        CHECK(strstr(decode_buffer.start(), "0x178c29c") == NULL);
+        CHECK(strstr(decode_buffer.start(), smi_hex_buffer.start()) == NULL);
       }
     }
   }

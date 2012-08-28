@@ -774,6 +774,11 @@ class MacroAssembler: public Assembler {
   // Move if the registers are not identical.
   void Move(Register target, Register source);
 
+  // Support for constant splitting.
+  bool IsUnsafeInt(const int x);
+  void SafeMove(Register dst, Smi* src);
+  void SafePush(Smi* src);
+
   // Bit-field support.
   void TestBit(const Operand& dst, int bit_index);
 
@@ -817,7 +822,7 @@ class MacroAssembler: public Assembler {
   void Call(ExternalReference ext);
   void Call(Handle<Code> code_object,
             RelocInfo::Mode rmode,
-            unsigned ast_id = kNoASTId);
+            TypeFeedbackId ast_id = TypeFeedbackId::None());
 
   // The size of the code generated for different call instructions.
   int CallSize(Address destination, RelocInfo::Mode rmode) {
@@ -1155,7 +1160,7 @@ class MacroAssembler: public Assembler {
   // Runtime calls
 
   // Call a code stub.
-  void CallStub(CodeStub* stub, unsigned ast_id = kNoASTId);
+  void CallStub(CodeStub* stub, TypeFeedbackId ast_id = TypeFeedbackId::None());
 
   // Tail call a code stub (jump).
   void TailCallStub(CodeStub* stub);
@@ -1322,6 +1327,8 @@ class MacroAssembler: public Assembler {
   // Returns a register holding the smi value. The register MUST NOT be
   // modified. It may be the "smi 1 constant" register.
   Register GetSmiConstant(Smi* value);
+
+  intptr_t RootRegisterDelta(ExternalReference other);
 
   // Moves the smi value to the destination register.
   void LoadSmiConstant(Register dst, Smi* value);

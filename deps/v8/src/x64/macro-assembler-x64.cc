@@ -53,9 +53,17 @@ MacroAssembler::MacroAssembler(Isolate* arg_isolate, void* buffer, int size)
 }
 
 
-static intptr_t RootRegisterDelta(ExternalReference other, Isolate* isolate) {
+static const int kInvalidRootRegisterDelta = -1;
+
+
+intptr_t MacroAssembler::RootRegisterDelta(ExternalReference other) {
+  if (predictable_code_size() &&
+      (other.address() < reinterpret_cast<Address>(isolate()) ||
+       other.address() >= reinterpret_cast<Address>(isolate() + 1))) {
+    return kInvalidRootRegisterDelta;
+  }
   Address roots_register_value = kRootRegisterBias +
-      reinterpret_cast<Address>(isolate->heap()->roots_array_start());
+      reinterpret_cast<Address>(isolate()->heap()->roots_array_start());
   intptr_t delta = other.address() - roots_register_value;
   return delta;
 }
@@ -64,8 +72,8 @@ static intptr_t RootRegisterDelta(ExternalReference other, Isolate* isolate) {
 Operand MacroAssembler::ExternalOperand(ExternalReference target,
                                         Register scratch) {
   if (root_array_available_ && !Serializer::enabled()) {
-    intptr_t delta = RootRegisterDelta(target, isolate());
-    if (is_int32(delta)) {
+    intptr_t delta = RootRegisterDelta(target);
+    if (delta != kInvalidRootRegisterDelta && is_int32(delta)) {
       Serializer::TooLateToEnableNow();
       return Operand(kRootRegister, static_cast<int32_t>(delta));
     }
@@ -77,8 +85,8 @@ Operand MacroAssembler::ExternalOperand(ExternalReference target,
 
 void MacroAssembler::Load(Register destination, ExternalReference source) {
   if (root_array_available_ && !Serializer::enabled()) {
-    intptr_t delta = RootRegisterDelta(source, isolate());
-    if (is_int32(delta)) {
+    intptr_t delta = RootRegisterDelta(source);
+    if (delta != kInvalidRootRegisterDelta && is_int32(delta)) {
       Serializer::TooLateToEnableNow();
       movq(destination, Operand(kRootRegister, static_cast<int32_t>(delta)));
       return;
@@ -96,8 +104,8 @@ void MacroAssembler::Load(Register destination, ExternalReference source) {
 
 void MacroAssembler::Store(ExternalReference destination, Register source) {
   if (root_array_available_ && !Serializer::enabled()) {
-    intptr_t delta = RootRegisterDelta(destination, isolate());
-    if (is_int32(delta)) {
+    intptr_t delta = RootRegisterDelta(destination);
+    if (delta != kInvalidRootRegisterDelta && is_int32(delta)) {
       Serializer::TooLateToEnableNow();
       movq(Operand(kRootRegister, static_cast<int32_t>(delta)), source);
       return;
@@ -116,8 +124,8 @@ void MacroAssembler::Store(ExternalReference destination, Register source) {
 void MacroAssembler::LoadAddress(Register destination,
                                  ExternalReference source) {
   if (root_array_available_ && !Serializer::enabled()) {
-    intptr_t delta = RootRegisterDelta(source, isolate());
-    if (is_int32(delta)) {
+    intptr_t delta = RootRegisterDelta(source);
+    if (delta != kInvalidRootRegisterDelta && is_int32(delta)) {
       Serializer::TooLateToEnableNow();
       lea(destination, Operand(kRootRegister, static_cast<int32_t>(delta)));
       return;
@@ -133,8 +141,8 @@ int MacroAssembler::LoadAddressSize(ExternalReference source) {
     // This calculation depends on the internals of LoadAddress.
     // It's correctness is ensured by the asserts in the Call
     // instruction below.
-    intptr_t delta = RootRegisterDelta(source, isolate());
-    if (is_int32(delta)) {
+    intptr_t delta = RootRegisterDelta(source);
+    if (delta != kInvalidRootRegisterDelta && is_int32(delta)) {
       Serializer::TooLateToEnableNow();
       // Operand is lea(scratch, Operand(kRootRegister, delta));
       // Opcodes : REX.W 8D ModRM Disp8/Disp32  - 4 or 7.
@@ -216,7 +224,7 @@ void MacroAssembler::RememberedSetHelper(Register object,  // For debug tests.
                                          Register scratch,
                                          SaveFPRegsMode save_fp,
                                          RememberedSetFinalAction and_then) {
-  if (FLAG_debug_code) {
+  if (emit_debug_code()) {
     Label ok;
     JumpIfNotInNewSpace(object, scratch, &ok, Label::kNear);
     int3();
@@ -397,7 +405,7 @@ void MacroAssembler::RecordWrite(Register object,
     return;
   }
 
-  if (FLAG_debug_code) {
+  if (emit_debug_code()) {
     Label ok;
     cmpq(value, Operand(address, 0));
     j(equal, &ok, Label::kNear);
@@ -538,7 +546,7 @@ void MacroAssembler::Abort(const char* msg) {
 }
 
 
-void MacroAssembler::CallStub(CodeStub* stub, unsigned ast_id) {
+void MacroAssembler::CallStub(CodeStub* stub, TypeFeedbackId ast_id) {
   ASSERT(AllowThisStubCall(stub));  // Calls are not allowed in some stubs
   Call(stub->GetCode(), RelocInfo::CODE_TARGET, ast_id);
 }
@@ -746,13 +754,13 @@ void MacroAssembler::CallApiFunctionAndReturn(Address function_address,
   LeaveApiExitFrame();
   ret(stack_space * kPointerSize);
 
-  bind(&promote_scheduled_exception);
-  TailCallRuntime(Runtime::kPromoteScheduledException, 0, 1);
-
   bind(&empty_result);
   // It was zero; the result is undefined.
-  Move(rax, factory->undefined_value());
+  LoadRoot(rax, Heap::kUndefinedValueRootIndex);
   jmp(&prologue);
+
+  bind(&promote_scheduled_exception);
+  TailCallRuntime(Runtime::kPromoteScheduledException, 0, 1);
 
   // HandleScope limit has changed. Delete allocated extensions.
   bind(&delete_allocated_handles);
@@ -891,6 +899,38 @@ void MacroAssembler::Set(const Operand& dst, int64_t x) {
     movq(dst, kScratchRegister);
   }
 }
+
+
+bool MacroAssembler::IsUnsafeInt(const int x) {
+  static const int kMaxBits = 17;
+  return !is_intn(x, kMaxBits);
+}
+
+
+void MacroAssembler::SafeMove(Register dst, Smi* src) {
+  ASSERT(!dst.is(kScratchRegister));
+  ASSERT(kSmiValueSize == 32);  // JIT cookie can be converted to Smi.
+  if (IsUnsafeInt(src->value()) && jit_cookie() != 0) {
+    Move(dst, Smi::FromInt(src->value() ^ jit_cookie()));
+    Move(kScratchRegister, Smi::FromInt(jit_cookie()));
+    xor_(dst, kScratchRegister);
+  } else {
+    Move(dst, src);
+  }
+}
+
+
+void MacroAssembler::SafePush(Smi* src) {
+  ASSERT(kSmiValueSize == 32);  // JIT cookie can be converted to Smi.
+  if (IsUnsafeInt(src->value()) && jit_cookie() != 0) {
+    Push(Smi::FromInt(src->value() ^ jit_cookie()));
+    Move(kScratchRegister, Smi::FromInt(jit_cookie()));
+    xor_(Operand(rsp, 0), kScratchRegister);
+  } else {
+    Push(src);
+  }
+}
+
 
 // ----------------------------------------------------------------------------
 // Smi tagging, untagging and tag detection.
@@ -2377,7 +2417,7 @@ void MacroAssembler::Call(Address destination, RelocInfo::Mode rmode) {
 
 void MacroAssembler::Call(Handle<Code> code_object,
                           RelocInfo::Mode rmode,
-                          unsigned ast_id) {
+                          TypeFeedbackId ast_id) {
 #ifdef DEBUG
   int end_position = pc_offset() + CallSize(code_object);
 #endif
@@ -2820,12 +2860,19 @@ void MacroAssembler::ClampDoubleToUint8(XMMRegister input_reg,
 
 void MacroAssembler::LoadInstanceDescriptors(Register map,
                                              Register descriptors) {
-  movq(descriptors, FieldOperand(map,
-                                 Map::kInstanceDescriptorsOrBitField3Offset));
-  Label not_smi;
-  JumpIfNotSmi(descriptors, &not_smi, Label::kNear);
+  Register temp = descriptors;
+  movq(temp, FieldOperand(map, Map::kTransitionsOrBackPointerOffset));
+
+  Label ok, fail;
+  CheckMap(temp,
+           isolate()->factory()->fixed_array_map(),
+           &fail,
+           DONT_DO_SMI_CHECK);
+  movq(descriptors, FieldOperand(temp, TransitionArray::kDescriptorsOffset));
+  jmp(&ok);
+  bind(&fail);
   Move(descriptors, isolate()->factory()->empty_descriptor_array());
-  bind(&not_smi);
+  bind(&ok);
 }
 
 
@@ -3954,7 +4001,7 @@ void MacroAssembler::CopyBytes(Register destination,
                                int min_length,
                                Register scratch) {
   ASSERT(min_length >= 0);
-  if (FLAG_debug_code) {
+  if (emit_debug_code()) {
     cmpl(length, Immediate(min_length));
     Assert(greater_equal, "Invalid min_length");
   }
@@ -4331,7 +4378,7 @@ void MacroAssembler::EnsureNotWhite(
   testq(Operand(bitmap_scratch, MemoryChunk::kHeaderSize), mask_scratch);
   j(not_zero, &done, Label::kNear);
 
-  if (FLAG_debug_code) {
+  if (emit_debug_code()) {
     // Check for impossible bit pattern.
     Label ok;
     push(mask_scratch);
@@ -4425,13 +4472,21 @@ void MacroAssembler::CheckEnumCache(Register null_value, Label* call_runtime) {
   // check for an enum cache.  Leave the map in rbx for the subsequent
   // prototype load.
   movq(rbx, FieldOperand(rcx, HeapObject::kMapOffset));
-  movq(rdx, FieldOperand(rbx, Map::kInstanceDescriptorsOrBitField3Offset));
-  JumpIfSmi(rdx, call_runtime);
+  movq(rdx, FieldOperand(rbx, Map::kTransitionsOrBackPointerOffset));
+
+  CheckMap(rdx,
+           isolate()->factory()->fixed_array_map(),
+           call_runtime,
+           DONT_DO_SMI_CHECK);
+
+  movq(rdx, FieldOperand(rdx, TransitionArray::kDescriptorsOffset));
+  cmpq(rdx, empty_descriptor_array_value);
+  j(equal, call_runtime);
 
   // Check that there is an enum cache in the non-empty instance
   // descriptors (rdx).  This is the case if the next enumeration
   // index field does not contain a smi.
-  movq(rdx, FieldOperand(rdx, DescriptorArray::kEnumerationIndexOffset));
+  movq(rdx, FieldOperand(rdx, DescriptorArray::kEnumCacheOffset));
   JumpIfSmi(rdx, call_runtime);
 
   // For all objects but the receiver, check that the cache is empty.

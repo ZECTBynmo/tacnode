@@ -85,7 +85,7 @@ void MacroAssembler::RememberedSetHelper(
     SaveFPRegsMode save_fp,
     MacroAssembler::RememberedSetFinalAction and_then) {
   Label done;
-  if (FLAG_debug_code) {
+  if (emit_debug_code()) {
     Label ok;
     JumpIfNotInNewSpace(object, scratch, &ok, Label::kNear);
     int3();
@@ -317,7 +317,7 @@ void MacroAssembler::RecordWrite(Register object,
     return;
   }
 
-  if (FLAG_debug_code) {
+  if (emit_debug_code()) {
     Label ok;
     cmp(value, Operand(address, 0));
     j(equal, &ok, Label::kNear);
@@ -1707,7 +1707,7 @@ void MacroAssembler::TryGetFunctionPrototype(Register function,
 }
 
 
-void MacroAssembler::CallStub(CodeStub* stub, unsigned ast_id) {
+void MacroAssembler::CallStub(CodeStub* stub, TypeFeedbackId ast_id) {
   ASSERT(AllowThisStubCall(stub));  // Calls are not allowed in some stubs.
   call(stub->GetCode(), RelocInfo::CODE_TARGET, ast_id);
 }
@@ -1924,13 +1924,14 @@ void MacroAssembler::CallApiFunctionAndReturn(Address function_address,
   j(not_equal, &promote_scheduled_exception);
   LeaveApiExitFrame();
   ret(stack_space * kPointerSize);
-  bind(&promote_scheduled_exception);
-  TailCallRuntime(Runtime::kPromoteScheduledException, 0, 1);
 
   bind(&empty_handle);
   // It was zero; the result is undefined.
   mov(eax, isolate()->factory()->undefined_value());
   jmp(&prologue);
+
+  bind(&promote_scheduled_exception);
+  TailCallRuntime(Runtime::kPromoteScheduledException, 0, 1);
 
   // HandleScope limit has changed. Delete allocated extensions.
   ExternalReference delete_extensions =
@@ -2518,12 +2519,19 @@ void MacroAssembler::Abort(const char* msg) {
 
 void MacroAssembler::LoadInstanceDescriptors(Register map,
                                              Register descriptors) {
-  mov(descriptors,
-      FieldOperand(map, Map::kInstanceDescriptorsOrBitField3Offset));
-  Label not_smi;
-  JumpIfNotSmi(descriptors, &not_smi);
+  Register temp = descriptors;
+  mov(temp, FieldOperand(map, Map::kTransitionsOrBackPointerOffset));
+
+  Label ok, fail;
+  CheckMap(temp,
+           isolate()->factory()->fixed_array_map(),
+           &fail,
+           DONT_DO_SMI_CHECK);
+  mov(descriptors, FieldOperand(temp, TransitionArray::kDescriptorsOffset));
+  jmp(&ok);
+  bind(&fail);
   mov(descriptors, isolate()->factory()->empty_descriptor_array());
-  bind(&not_smi);
+  bind(&ok);
 }
 
 
@@ -2786,7 +2794,7 @@ void MacroAssembler::EnsureNotWhite(
   test(mask_scratch, Operand(bitmap_scratch, MemoryChunk::kHeaderSize));
   j(not_zero, &done, Label::kNear);
 
-  if (FLAG_debug_code) {
+  if (emit_debug_code()) {
     // Check for impossible bit pattern.
     Label ok;
     push(mask_scratch);
@@ -2861,7 +2869,7 @@ void MacroAssembler::EnsureNotWhite(
   and_(bitmap_scratch, Immediate(~Page::kPageAlignmentMask));
   add(Operand(bitmap_scratch, MemoryChunk::kLiveBytesOffset),
       length);
-  if (FLAG_debug_code) {
+  if (emit_debug_code()) {
     mov(length, Operand(bitmap_scratch, MemoryChunk::kLiveBytesOffset));
     cmp(length, Operand(bitmap_scratch, MemoryChunk::kSizeOffset));
     Check(less_equal, "Live Bytes Count overflow chunk size");
@@ -2886,13 +2894,20 @@ void MacroAssembler::CheckEnumCache(Label* call_runtime) {
   // check for an enum cache.  Leave the map in ebx for the subsequent
   // prototype load.
   mov(ebx, FieldOperand(ecx, HeapObject::kMapOffset));
-  mov(edx, FieldOperand(ebx, Map::kInstanceDescriptorsOrBitField3Offset));
-  JumpIfSmi(edx, call_runtime);
+  mov(edx, FieldOperand(ebx, Map::kTransitionsOrBackPointerOffset));
+  CheckMap(edx,
+           isolate()->factory()->fixed_array_map(),
+           call_runtime,
+           DONT_DO_SMI_CHECK);
+
+  mov(edx, FieldOperand(edx, TransitionArray::kDescriptorsOffset));
+  cmp(edx, isolate()->factory()->empty_descriptor_array());
+  j(equal, call_runtime);
 
   // Check that there is an enum cache in the non-empty instance
   // descriptors (edx).  This is the case if the next enumeration
   // index field does not contain a smi.
-  mov(edx, FieldOperand(edx, DescriptorArray::kEnumerationIndexOffset));
+  mov(edx, FieldOperand(edx, DescriptorArray::kEnumCacheOffset));
   JumpIfSmi(edx, call_runtime);
 
   // For all objects but the receiver, check that the cache is empty.

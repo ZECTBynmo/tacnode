@@ -415,6 +415,7 @@ TEST(WeakGlobalHandlesMark) {
   global_handles->Destroy(h1.location());
 }
 
+
 TEST(DeleteWeakGlobalHandle) {
   InitializeVM();
   GlobalHandles* global_handles = Isolate::Current()->global_handles();
@@ -444,6 +445,7 @@ TEST(DeleteWeakGlobalHandle) {
 
   CHECK(WeakPointerCleared);
 }
+
 
 static const char* not_so_random_string_table[] = {
   "abstract",
@@ -984,7 +986,7 @@ TEST(TestCodeFlushing) {
 
 
 // Count the number of global contexts in the weak list of global contexts.
-static int CountGlobalContexts() {
+int CountGlobalContexts() {
   int count = 0;
   Object* object = HEAP->global_contexts_list();
   while (!object->IsUndefined()) {
@@ -1198,6 +1200,7 @@ TEST(TestSizeOfObjects) {
   HEAP->CollectAllGarbage(Heap::kNoGCFlags);
   HEAP->CollectAllGarbage(Heap::kNoGCFlags);
   HEAP->CollectAllGarbage(Heap::kNoGCFlags);
+  HEAP->CollectAllGarbage(Heap::kNoGCFlags);
   CHECK(HEAP->old_pointer_space()->IsSweepingComplete());
   int initial_size = static_cast<int>(HEAP->SizeOfObjects());
 
@@ -1267,6 +1270,7 @@ static void FillUpNewSpace(NewSpace* new_space) {
   // that the scavenger does not undo the filling.
   v8::HandleScope scope;
   AlwaysAllocateScope always_allocate;
+  LinearAllocationScope allocate_linearly;
   intptr_t available = new_space->EffectiveCapacity() - new_space->Size();
   intptr_t number_of_fillers = (available / FixedArray::SizeFor(32)) - 1;
   for (intptr_t i = 0; i < number_of_fillers; i++) {
@@ -1279,7 +1283,8 @@ TEST(GrowAndShrinkNewSpace) {
   InitializeVM();
   NewSpace* new_space = HEAP->new_space();
 
-  if (HEAP->ReservedSemiSpaceSize() == HEAP->InitialSemiSpaceSize()) {
+  if (HEAP->ReservedSemiSpaceSize() == HEAP->InitialSemiSpaceSize() ||
+      HEAP->MaxSemiSpaceSize() == HEAP->InitialSemiSpaceSize()) {
     // The max size cannot exceed the reserved size, since semispaces must be
     // always within the reserved space.  We can't test new space growing and
     // shrinking if the reserved size is the same as the minimum (initial) size.
@@ -1327,7 +1332,8 @@ TEST(GrowAndShrinkNewSpace) {
 TEST(CollectingAllAvailableGarbageShrinksNewSpace) {
   InitializeVM();
 
-  if (HEAP->ReservedSemiSpaceSize() == HEAP->InitialSemiSpaceSize()) {
+  if (HEAP->ReservedSemiSpaceSize() == HEAP->InitialSemiSpaceSize() ||
+      HEAP->MaxSemiSpaceSize() == HEAP->InitialSemiSpaceSize()) {
     // The max size cannot exceed the reserved size, since semispaces must be
     // always within the reserved space.  We can't test new space growing and
     // shrinking if the reserved size is the same as the minimum (initial) size.
@@ -1586,7 +1592,7 @@ TEST(PrototypeTransitionClearing) {
   CHECK_EQ(transitions, baseObject->map()->NumberOfProtoTransitions());
 
   // Verify that prototype transitions array was compacted.
-  FixedArray* trans = baseObject->map()->prototype_transitions();
+  FixedArray* trans = baseObject->map()->GetPrototypeTransitions();
   for (int i = 0; i < transitions; i++) {
     int j = Map::kProtoTransitionHeaderSize +
         i * Map::kProtoTransitionElementsPerEntry;
@@ -1607,7 +1613,8 @@ TEST(PrototypeTransitionClearing) {
   // clearing correctly records slots in prototype transition array.
   i::FLAG_always_compact = true;
   Handle<Map> map(baseObject->map());
-  CHECK(!space->LastPage()->Contains(map->prototype_transitions()->address()));
+  CHECK(!space->LastPage()->Contains(
+      map->GetPrototypeTransitions()->address()));
   CHECK(space->LastPage()->Contains(prototype->address()));
   baseObject->SetPrototype(*prototype, false)->ToObjectChecked();
   CHECK(map->GetPrototypeTransition(*prototype)->IsMap());
@@ -1742,14 +1749,20 @@ TEST(OptimizedAllocationAlwaysInNewSpace) {
 
 
 static int CountMapTransitions(Map* map) {
-  int result = 0;
-  DescriptorArray* descs = map->instance_descriptors();
-  for (int i = 0; i < descs->number_of_descriptors(); i++) {
-    if (descs->IsTransitionOnly(i)) {
-      result++;
-    }
+  return map->transitions()->number_of_transitions();
+}
+
+
+// Go through all incremental marking steps in one swoop.
+static void SimulateIncrementalMarking() {
+  IncrementalMarking* marking = HEAP->incremental_marking();
+  CHECK(marking->IsStopped());
+  marking->Start();
+  CHECK(marking->IsMarking());
+  while (!marking->IsComplete()) {
+    marking->Step(MB, IncrementalMarking::NO_GC_VIA_STACK_GUARD);
   }
-  return result;
+  CHECK(marking->IsComplete());
 }
 
 
@@ -1760,14 +1773,18 @@ TEST(Regress1465) {
   i::FLAG_trace_incremental_marking = true;
   InitializeVM();
   v8::HandleScope scope;
+  static const int transitions_count = 256;
 
-  #define TRANSITION_COUNT 256
-  for (int i = 0; i < TRANSITION_COUNT; i++) {
-    EmbeddedVector<char, 64> buffer;
-    OS::SNPrintF(buffer, "var o = new Object; o.prop%d = %d;", i, i);
-    CompileRun(buffer.start());
+  {
+    AlwaysAllocateScope always_allocate;
+    for (int i = 0; i < transitions_count; i++) {
+      EmbeddedVector<char, 64> buffer;
+      OS::SNPrintF(buffer, "var o = new Object; o.prop%d = %d;", i, i);
+      CompileRun(buffer.start());
+    }
+    CompileRun("var root = new Object;");
   }
-  CompileRun("var root = new Object;");
+
   Handle<JSObject> root =
       v8::Utils::OpenHandle(
           *v8::Handle<v8::Object>::Cast(
@@ -1776,19 +1793,10 @@ TEST(Regress1465) {
   // Count number of live transitions before marking.
   int transitions_before = CountMapTransitions(root->map());
   CompileRun("%DebugPrint(root);");
-  CHECK_EQ(TRANSITION_COUNT, transitions_before);
+  CHECK_EQ(transitions_count, transitions_before);
 
-  // Go through all incremental marking steps in one swoop.
-  IncrementalMarking* marking = HEAP->incremental_marking();
-  CHECK(marking->IsStopped());
-  marking->Start();
-  CHECK(marking->IsMarking());
-  while (!marking->IsComplete()) {
-    marking->Step(MB, IncrementalMarking::NO_GC_VIA_STACK_GUARD);
-  }
-  CHECK(marking->IsComplete());
+  SimulateIncrementalMarking();
   HEAP->CollectAllGarbage(Heap::kNoGCFlags);
-  CHECK(marking->IsStopped());
 
   // Count number of live transitions after marking.  Note that one transition
   // is left, because 'o' still holds an instance of one transition target.
@@ -1810,15 +1818,7 @@ TEST(Regress2143a) {
              "root.foo = 0;"
              "root = new Object;");
 
-  // Go through all incremental marking steps in one swoop.
-  IncrementalMarking* marking = HEAP->incremental_marking();
-  CHECK(marking->IsStopped());
-  marking->Start();
-  CHECK(marking->IsMarking());
-  while (!marking->IsComplete()) {
-    marking->Step(MB, IncrementalMarking::NO_GC_VIA_STACK_GUARD);
-  }
-  CHECK(marking->IsComplete());
+  SimulateIncrementalMarking();
 
   // Compile a StoreIC that performs the prepared map transition. This
   // will restart incremental marking and should make sure the root is
@@ -1834,7 +1834,6 @@ TEST(Regress2143a) {
 
   // Explicitly request GC to perform final marking step and sweeping.
   HEAP->CollectAllGarbage(Heap::kNoGCFlags);
-  CHECK(marking->IsStopped());
 
   Handle<JSObject> root =
       v8::Utils::OpenHandle(
@@ -1860,15 +1859,7 @@ TEST(Regress2143b) {
              "root.foo = 0;"
              "root = new Object;");
 
-  // Go through all incremental marking steps in one swoop.
-  IncrementalMarking* marking = HEAP->incremental_marking();
-  CHECK(marking->IsStopped());
-  marking->Start();
-  CHECK(marking->IsMarking());
-  while (!marking->IsComplete()) {
-    marking->Step(MB, IncrementalMarking::NO_GC_VIA_STACK_GUARD);
-  }
-  CHECK(marking->IsComplete());
+  SimulateIncrementalMarking();
 
   // Compile an optimized LStoreNamedField that performs the prepared
   // map transition. This will restart incremental marking and should
@@ -1887,7 +1878,6 @@ TEST(Regress2143b) {
 
   // Explicitly request GC to perform final marking step and sweeping.
   HEAP->CollectAllGarbage(Heap::kNoGCFlags);
-  CHECK(marking->IsStopped());
 
   Handle<JSObject> root =
       v8::Utils::OpenHandle(
@@ -1906,6 +1896,9 @@ void SimulateFullSpace(PagedSpace* space);
 
 TEST(ReleaseOverReservedPages) {
   i::FLAG_trace_gc = true;
+  // The optimizer can allocate stuff, messing up the test.
+  i::FLAG_crankshaft = false;
+  i::FLAG_always_opt = false;
   InitializeVM();
   v8::HandleScope scope;
   static const int number_of_test_pages = 20;
@@ -1936,4 +1929,254 @@ TEST(ReleaseOverReservedPages) {
   // to the OS so that other processes can seize the memory.
   HEAP->CollectAllAvailableGarbage("triggered really hard");
   CHECK_EQ(1, old_pointer_space->CountTotalPages());
+}
+
+
+TEST(Regress2237) {
+  InitializeVM();
+  v8::HandleScope scope;
+  Handle<String> slice(HEAP->empty_string());
+
+  {
+    // Generate a parent that lives in new-space.
+    v8::HandleScope inner_scope;
+    const char* c = "This text is long enough to trigger sliced strings.";
+    Handle<String> s = FACTORY->NewStringFromAscii(CStrVector(c));
+    CHECK(s->IsSeqAsciiString());
+    CHECK(HEAP->InNewSpace(*s));
+
+    // Generate a sliced string that is based on the above parent and
+    // lives in old-space.
+    FillUpNewSpace(HEAP->new_space());
+    AlwaysAllocateScope always_allocate;
+    Handle<String> t;
+    // TODO(mstarzinger): Unfortunately FillUpNewSpace() still leaves
+    // some slack, so we need to allocate a few sliced strings.
+    for (int i = 0; i < 16; i++) {
+      t = FACTORY->NewProperSubString(s, 5, 35);
+    }
+    CHECK(t->IsSlicedString());
+    CHECK(!HEAP->InNewSpace(*t));
+    *slice.location() = *t.location();
+  }
+
+  CHECK(SlicedString::cast(*slice)->parent()->IsSeqAsciiString());
+  HEAP->CollectAllGarbage(Heap::kNoGCFlags);
+  CHECK(SlicedString::cast(*slice)->parent()->IsSeqAsciiString());
+}
+
+
+#ifdef OBJECT_PRINT
+TEST(PrintSharedFunctionInfo) {
+  InitializeVM();
+  v8::HandleScope scope;
+  const char* source = "f = function() { return 987654321; }\n"
+                       "g = function() { return 123456789; }\n";
+  CompileRun(source);
+  Handle<JSFunction> g =
+      v8::Utils::OpenHandle(
+          *v8::Handle<v8::Function>::Cast(
+              v8::Context::GetCurrent()->Global()->Get(v8_str("g"))));
+
+  AssertNoAllocation no_alloc;
+  g->shared()->PrintLn();
+}
+#endif  // OBJECT_PRINT
+
+
+TEST(Regress2211) {
+  InitializeVM();
+  v8::HandleScope scope;
+
+  v8::Handle<v8::String> value = v8_str("val string");
+  Smi* hash = Smi::FromInt(321);
+  Heap* heap = Isolate::Current()->heap();
+
+  for (int i = 0; i < 2; i++) {
+    // Store identity hash first and common hidden property second.
+    v8::Handle<v8::Object> obj = v8::Object::New();
+    Handle<JSObject> internal_obj = v8::Utils::OpenHandle(*obj);
+    CHECK(internal_obj->HasFastProperties());
+
+    // In the first iteration, set hidden value first and identity hash second.
+    // In the second iteration, reverse the order.
+    if (i == 0) obj->SetHiddenValue(v8_str("key string"), value);
+    MaybeObject* maybe_obj = internal_obj->SetIdentityHash(hash,
+                                                           ALLOW_CREATION);
+    CHECK(!maybe_obj->IsFailure());
+    if (i == 1) obj->SetHiddenValue(v8_str("key string"), value);
+
+    // Check values.
+    CHECK_EQ(hash,
+             internal_obj->GetHiddenProperty(heap->identity_hash_symbol()));
+    CHECK(value->Equals(obj->GetHiddenValue(v8_str("key string"))));
+
+    // Check size.
+    DescriptorArray* descriptors = internal_obj->map()->instance_descriptors();
+    ObjectHashTable* hashtable = ObjectHashTable::cast(
+        internal_obj->FastPropertyAt(descriptors->GetFieldIndex(0)));
+    // HashTable header (5) and 4 initial entries (8).
+    CHECK_LE(hashtable->SizeFor(hashtable->length()), 13 * kPointerSize);
+  }
+}
+
+
+TEST(IncrementalMarkingClearsTypeFeedbackCells) {
+  if (i::FLAG_always_opt) return;
+  InitializeVM();
+  v8::HandleScope scope;
+  v8::Local<v8::Value> fun1, fun2;
+
+  {
+    LocalContext env;
+    CompileRun("function fun() {};");
+    fun1 = env->Global()->Get(v8_str("fun"));
+  }
+
+  {
+    LocalContext env;
+    CompileRun("function fun() {};");
+    fun2 = env->Global()->Get(v8_str("fun"));
+  }
+
+  // Prepare function f that contains type feedback for closures
+  // originating from two different global contexts.
+  v8::Context::GetCurrent()->Global()->Set(v8_str("fun1"), fun1);
+  v8::Context::GetCurrent()->Global()->Set(v8_str("fun2"), fun2);
+  CompileRun("function f(a, b) { a(); b(); } f(fun1, fun2);");
+  Handle<JSFunction> f =
+      v8::Utils::OpenHandle(
+          *v8::Handle<v8::Function>::Cast(
+              v8::Context::GetCurrent()->Global()->Get(v8_str("f"))));
+  Handle<TypeFeedbackCells> cells(TypeFeedbackInfo::cast(
+      f->shared()->code()->type_feedback_info())->type_feedback_cells());
+
+  CHECK_EQ(2, cells->CellCount());
+  CHECK(cells->Cell(0)->value()->IsJSFunction());
+  CHECK(cells->Cell(1)->value()->IsJSFunction());
+
+  SimulateIncrementalMarking();
+  HEAP->CollectAllGarbage(Heap::kNoGCFlags);
+
+  CHECK_EQ(2, cells->CellCount());
+  CHECK(cells->Cell(0)->value()->IsTheHole());
+  CHECK(cells->Cell(1)->value()->IsTheHole());
+}
+
+
+static Code* FindFirstIC(Code* code, Code::Kind kind) {
+  int mask = RelocInfo::ModeMask(RelocInfo::CODE_TARGET) |
+             RelocInfo::ModeMask(RelocInfo::CONSTRUCT_CALL) |
+             RelocInfo::ModeMask(RelocInfo::CODE_TARGET_WITH_ID) |
+             RelocInfo::ModeMask(RelocInfo::CODE_TARGET_CONTEXT);
+  for (RelocIterator it(code, mask); !it.done(); it.next()) {
+    RelocInfo* info = it.rinfo();
+    Code* target = Code::GetCodeFromTargetAddress(info->target_address());
+    if (target->is_inline_cache_stub() && target->kind() == kind) {
+      return target;
+    }
+  }
+  return NULL;
+}
+
+
+TEST(IncrementalMarkingPreservesMonomorhpicIC) {
+  if (i::FLAG_always_opt) return;
+  InitializeVM();
+  v8::HandleScope scope;
+
+  // Prepare function f that contains a monomorphic IC for object
+  // originating from the same global context.
+  CompileRun("function fun() { this.x = 1; }; var obj = new fun();"
+             "function f(o) { return o.x; } f(obj); f(obj);");
+  Handle<JSFunction> f =
+      v8::Utils::OpenHandle(
+          *v8::Handle<v8::Function>::Cast(
+              v8::Context::GetCurrent()->Global()->Get(v8_str("f"))));
+
+  Code* ic_before = FindFirstIC(f->shared()->code(), Code::LOAD_IC);
+  CHECK(ic_before->ic_state() == MONOMORPHIC);
+
+  // Fire context dispose notification.
+  v8::V8::ContextDisposedNotification();
+  SimulateIncrementalMarking();
+  HEAP->CollectAllGarbage(Heap::kNoGCFlags);
+
+  Code* ic_after = FindFirstIC(f->shared()->code(), Code::LOAD_IC);
+  CHECK(ic_after->ic_state() == MONOMORPHIC);
+}
+
+
+TEST(IncrementalMarkingClearsMonomorhpicIC) {
+  if (i::FLAG_always_opt) return;
+  InitializeVM();
+  v8::HandleScope scope;
+  v8::Local<v8::Value> obj1;
+
+  {
+    LocalContext env;
+    CompileRun("function fun() { this.x = 1; }; var obj = new fun();");
+    obj1 = env->Global()->Get(v8_str("obj"));
+  }
+
+  // Prepare function f that contains a monomorphic IC for object
+  // originating from a different global context.
+  v8::Context::GetCurrent()->Global()->Set(v8_str("obj1"), obj1);
+  CompileRun("function f(o) { return o.x; } f(obj1); f(obj1);");
+  Handle<JSFunction> f =
+      v8::Utils::OpenHandle(
+          *v8::Handle<v8::Function>::Cast(
+              v8::Context::GetCurrent()->Global()->Get(v8_str("f"))));
+
+  Code* ic_before = FindFirstIC(f->shared()->code(), Code::LOAD_IC);
+  CHECK(ic_before->ic_state() == MONOMORPHIC);
+
+  // Fire context dispose notification.
+  v8::V8::ContextDisposedNotification();
+  SimulateIncrementalMarking();
+  HEAP->CollectAllGarbage(Heap::kNoGCFlags);
+
+  Code* ic_after = FindFirstIC(f->shared()->code(), Code::LOAD_IC);
+  CHECK(ic_after->ic_state() == UNINITIALIZED);
+}
+
+
+TEST(IncrementalMarkingClearsPolymorhpicIC) {
+  if (i::FLAG_always_opt) return;
+  InitializeVM();
+  v8::HandleScope scope;
+  v8::Local<v8::Value> obj1, obj2;
+
+  {
+    LocalContext env;
+    CompileRun("function fun() { this.x = 1; }; var obj = new fun();");
+    obj1 = env->Global()->Get(v8_str("obj"));
+  }
+
+  {
+    LocalContext env;
+    CompileRun("function fun() { this.x = 2; }; var obj = new fun();");
+    obj2 = env->Global()->Get(v8_str("obj"));
+  }
+
+  // Prepare function f that contains a polymorphic IC for objects
+  // originating from two different global contexts.
+  v8::Context::GetCurrent()->Global()->Set(v8_str("obj1"), obj1);
+  v8::Context::GetCurrent()->Global()->Set(v8_str("obj2"), obj2);
+  CompileRun("function f(o) { return o.x; } f(obj1); f(obj1); f(obj2);");
+  Handle<JSFunction> f =
+      v8::Utils::OpenHandle(
+          *v8::Handle<v8::Function>::Cast(
+              v8::Context::GetCurrent()->Global()->Get(v8_str("f"))));
+
+  Code* ic_before = FindFirstIC(f->shared()->code(), Code::LOAD_IC);
+  CHECK(ic_before->ic_state() == MEGAMORPHIC);
+
+  // Fire context dispose notification.
+  v8::V8::ContextDisposedNotification();
+  SimulateIncrementalMarking();
+  HEAP->CollectAllGarbage(Heap::kNoGCFlags);
+
+  Code* ic_after = FindFirstIC(f->shared()->code(), Code::LOAD_IC);
+  CHECK(ic_after->ic_state() == UNINITIALIZED);
 }

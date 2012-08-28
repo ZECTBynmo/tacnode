@@ -477,6 +477,14 @@ void Isolate::Iterate(ObjectVisitor* v) {
   Iterate(v, current_t);
 }
 
+void Isolate::IterateDeferredHandles(ObjectVisitor* visitor) {
+  for (DeferredHandles* deferred = deferred_handles_head_;
+       deferred != NULL;
+       deferred = deferred->next_) {
+    deferred->Iterate(visitor);
+  }
+}
+
 
 void Isolate::RegisterTryCatchHandler(v8::TryCatch* that) {
   // The ARM simulator has a separate JS stack.  We therefore register
@@ -1136,12 +1144,12 @@ void Isolate::DoThrow(Object* exception, MessageLocation* location) {
             "Extension or internal compilation error: %s in %s at line %d.\n",
             *String::cast(exception)->ToCString(),
             *String::cast(location->script()->name())->ToCString(),
-            line_number);
+            line_number + 1);
       } else {
         OS::PrintError(
             "Extension or internal compilation error in %s at line %d.\n",
             *String::cast(location->script()->name())->ToCString(),
-            line_number);
+            line_number + 1);
       }
     }
   }
@@ -1470,6 +1478,7 @@ Isolate::Isolate()
       descriptor_lookup_cache_(NULL),
       handle_scope_implementer_(NULL),
       unicode_cache_(NULL),
+      runtime_zone_(this),
       in_use_list_(0),
       free_list_(0),
       preallocated_storage_preallocated_(false),
@@ -1483,14 +1492,15 @@ Isolate::Isolate()
       string_tracker_(NULL),
       regexp_stack_(NULL),
       date_cache_(NULL),
-      context_exit_happened_(false) {
+      context_exit_happened_(false),
+      deferred_handles_head_(NULL),
+      optimizing_compiler_thread_(this) {
   TRACE_ISOLATE(constructor);
 
   memset(isolate_addresses_, 0,
       sizeof(isolate_addresses_[0]) * (kIsolateAddressCount + 1));
 
   heap_.isolate_ = this;
-  zone_.isolate_ = this;
   stack_guard_.isolate_ = this;
 
   // ThreadManager is initialized early to support locking an isolate
@@ -1547,6 +1557,11 @@ void Isolate::TearDown() {
     thread_data_table_->RemoveAllThreads(this);
   }
 
+  if (serialize_partial_snapshot_cache_ != NULL) {
+    delete[] serialize_partial_snapshot_cache_;
+    serialize_partial_snapshot_cache_ = NULL;
+  }
+
   if (!IsDefaultIsolate()) {
     delete this;
   }
@@ -1559,6 +1574,8 @@ void Isolate::TearDown() {
 void Isolate::Deinit() {
   if (state_ == INITIALIZED) {
     TRACE_ISOLATE(deinit);
+
+    if (FLAG_parallel_recompilation) optimizing_compiler_thread_.Stop();
 
     if (FLAG_hydrogen_stats) HStatistics::Instance()->Print();
 
@@ -1595,6 +1612,26 @@ void Isolate::Deinit() {
 }
 
 
+void Isolate::PushToPartialSnapshotCache(Object* obj) {
+  int length = serialize_partial_snapshot_cache_length();
+  int capacity = serialize_partial_snapshot_cache_capacity();
+
+  if (length >= capacity) {
+    int new_capacity = static_cast<int>((capacity + 10) * 1.2);
+    Object** new_array = new Object*[new_capacity];
+    for (int i = 0; i < length; i++) {
+      new_array[i] = serialize_partial_snapshot_cache()[i];
+    }
+    if (capacity != 0) delete[] serialize_partial_snapshot_cache();
+    set_serialize_partial_snapshot_cache(new_array);
+    set_serialize_partial_snapshot_cache_capacity(new_capacity);
+  }
+
+  serialize_partial_snapshot_cache()[length] = obj;
+  set_serialize_partial_snapshot_cache_length(length + 1);
+}
+
+
 void Isolate::SetIsolateThreadLocals(Isolate* isolate,
                                      PerIsolateThreadData* data) {
   Thread::SetThreadLocal(isolate_key_, isolate);
@@ -1606,7 +1643,7 @@ Isolate::~Isolate() {
   TRACE_ISOLATE(destructor);
 
   // Has to be called while counters_ are still alive.
-  zone_.DeleteKeptSegment();
+  runtime_zone_.DeleteKeptSegment();
 
   delete[] assembler_spare_buffer_;
   assembler_spare_buffer_ = NULL;
@@ -1743,10 +1780,8 @@ bool Isolate::Init(Deserializer* des) {
   ASSERT(Isolate::Current() == this);
   TRACE_ISOLATE(init);
 
-#ifdef DEBUG
   // The initialization process does not handle memory exhaustion.
   DisallowAllocationFailure disallow_allocation_failure;
-#endif
 
   InitializeLoggingAndCounters();
 
@@ -1778,7 +1813,7 @@ bool Isolate::Init(Deserializer* des) {
   global_handles_ = new GlobalHandles(this);
   bootstrapper_ = new Bootstrapper();
   handle_scope_implementer_ = new HandleScopeImplementer(this);
-  stub_cache_ = new StubCache(this, zone());
+  stub_cache_ = new StubCache(this, runtime_zone());
   regexp_stack_ = new RegExpStack();
   regexp_stack_->isolate_ = this;
   date_cache_ = new DateCache();
@@ -1812,6 +1847,11 @@ bool Isolate::Init(Deserializer* des) {
     return false;
   }
 
+  if (create_heap_objects) {
+    // Terminate the cache array with the sentinel so we can iterate.
+    PushToPartialSnapshotCache(heap_.undefined_value());
+  }
+
   InitializeThreadLocal();
 
   bootstrapper_->Initialize(create_heap_objects);
@@ -1838,7 +1878,7 @@ bool Isolate::Init(Deserializer* des) {
 #endif
 
   // If we are deserializing, read the state into the now-empty heap.
-  if (des != NULL) {
+  if (!create_heap_objects) {
     des->Deserialize();
   }
   stub_cache_->Initialize();
@@ -1853,7 +1893,7 @@ bool Isolate::Init(Deserializer* des) {
   heap_.SetStackLimits();
 
   // Quiet the heap NaN if needed on target platform.
-  if (des != NULL) Assembler::QuietNaN(heap_.nan_value());
+  if (!create_heap_objects) Assembler::QuietNaN(heap_.nan_value());
 
   deoptimizer_data_ = new DeoptimizerData;
   runtime_profiler_ = new RuntimeProfiler(this);
@@ -1861,7 +1901,7 @@ bool Isolate::Init(Deserializer* des) {
 
   // If we are deserializing, log non-function code objects and compiled
   // functions found in the snapshot.
-  if (des != NULL && (FLAG_log_code || FLAG_ll_prof)) {
+  if (create_heap_objects && (FLAG_log_code || FLAG_ll_prof)) {
     HandleScope scope;
     LOG(this, LogCodeObjects());
     LOG(this, LogCompiledFunctions());
@@ -1876,6 +1916,7 @@ bool Isolate::Init(Deserializer* des) {
 
   state_ = INITIALIZED;
   time_millis_at_init_ = OS::TimeCurrentMillis();
+  if (FLAG_parallel_recompilation) optimizing_compiler_thread_.Start();
   return true;
 }
 
@@ -1956,6 +1997,36 @@ void Isolate::Exit() {
 
   // Reinit the current thread for the isolate it was running before this one.
   SetIsolateThreadLocals(previous_isolate, previous_thread_data);
+}
+
+
+void Isolate::LinkDeferredHandles(DeferredHandles* deferred) {
+  deferred->next_ = deferred_handles_head_;
+  if (deferred_handles_head_ != NULL) {
+    deferred_handles_head_->previous_ = deferred;
+  }
+  deferred_handles_head_ = deferred;
+}
+
+
+void Isolate::UnlinkDeferredHandles(DeferredHandles* deferred) {
+#ifdef DEBUG
+  // In debug mode assert that the linked list is well-formed.
+  DeferredHandles* deferred_iterator = deferred;
+  while (deferred_iterator->previous_ != NULL) {
+    deferred_iterator = deferred_iterator->previous_;
+  }
+  ASSERT(deferred_handles_head_ == deferred_iterator);
+#endif
+  if (deferred_handles_head_ == deferred) {
+    deferred_handles_head_ = deferred_handles_head_->next_;
+  }
+  if (deferred->next_ != NULL) {
+    deferred->next_->previous_ = deferred->previous_;
+  }
+  if (deferred->previous_ != NULL) {
+    deferred->previous_->next_ = deferred->next_;
+  }
 }
 
 

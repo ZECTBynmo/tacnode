@@ -2559,7 +2559,7 @@ void MacroAssembler::Call(Address target,
 
 int MacroAssembler::CallSize(Handle<Code> code,
                              RelocInfo::Mode rmode,
-                             unsigned ast_id,
+                             TypeFeedbackId ast_id,
                              Condition cond,
                              Register rs,
                              const Operand& rt,
@@ -2571,7 +2571,7 @@ int MacroAssembler::CallSize(Handle<Code> code,
 
 void MacroAssembler::Call(Handle<Code> code,
                           RelocInfo::Mode rmode,
-                          unsigned ast_id,
+                          TypeFeedbackId ast_id,
                           Condition cond,
                           Register rs,
                           const Operand& rt,
@@ -2580,7 +2580,7 @@ void MacroAssembler::Call(Handle<Code> code,
   Label start;
   bind(&start);
   ASSERT(RelocInfo::IsCodeTarget(rmode));
-  if (rmode == RelocInfo::CODE_TARGET && ast_id != kNoASTId) {
+  if (rmode == RelocInfo::CODE_TARGET && !ast_id.IsNone()) {
     SetRecordedAstId(ast_id);
     rmode = RelocInfo::CODE_TARGET_WITH_ID;
   }
@@ -3911,7 +3911,8 @@ void MacroAssembler::CallStub(CodeStub* stub,
                               const Operand& r2,
                               BranchDelaySlot bd) {
   ASSERT(AllowThisStubCall(stub));  // Stub calls are not allowed in some stubs.
-  Call(stub->GetCode(), RelocInfo::CODE_TARGET, kNoASTId, cond, r1, r2, bd);
+  Call(stub->GetCode(), RelocInfo::CODE_TARGET, TypeFeedbackId::None(),
+       cond, r1, r2, bd);
 }
 
 
@@ -4459,7 +4460,8 @@ void MacroAssembler::LoadTransitionedArrayMapConditional(
                 Context::SlotOffset(Context::JS_ARRAY_MAPS_INDEX)));
   size_t offset = expected_kind * kPointerSize +
       FixedArrayBase::kHeaderSize;
-  Branch(no_map_match, ne, map_in_out, Operand(scratch));
+  lw(at, FieldMemOperand(scratch, offset));
+  Branch(no_map_match, ne, map_in_out, Operand(at));
 
   // Use the transitioned cached map.
   offset = transitioned_kind * kPointerSize +
@@ -5289,13 +5291,22 @@ void MacroAssembler::EnsureNotWhite(
 
 
 void MacroAssembler::LoadInstanceDescriptors(Register map,
-                                             Register descriptors) {
-  lw(descriptors,
-     FieldMemOperand(map, Map::kInstanceDescriptorsOrBitField3Offset));
-  Label not_smi;
-  JumpIfNotSmi(descriptors, &not_smi);
+                                             Register descriptors,
+                                             Register scratch) {
+  Register temp = descriptors;
+  lw(temp, FieldMemOperand(map, Map::kTransitionsOrBackPointerOffset));
+
+  Label ok, fail;
+  CheckMap(temp,
+           scratch,
+           isolate()->factory()->fixed_array_map(),
+           &fail,
+           DONT_DO_SMI_CHECK);
+  lw(descriptors, FieldMemOperand(temp, TransitionArray::kDescriptorsOffset));
+  jmp(&ok);
+  bind(&fail);
   LoadRoot(descriptors, Heap::kEmptyDescriptorArrayRootIndex);
-  bind(&not_smi);
+  bind(&ok);
 }
 
 
@@ -5304,9 +5315,6 @@ void MacroAssembler::CheckEnumCache(Register null_value, Label* call_runtime) {
   // Preload a couple of values used in the loop.
   Register  empty_fixed_array_value = t2;
   LoadRoot(empty_fixed_array_value, Heap::kEmptyFixedArrayRootIndex);
-  Register empty_descriptor_array_value = t3;
-  LoadRoot(empty_descriptor_array_value,
-           Heap::kEmptyDescriptorArrayRootIndex);
   mov(a1, a0);
   bind(&next);
 
@@ -5319,13 +5327,22 @@ void MacroAssembler::CheckEnumCache(Register null_value, Label* call_runtime) {
   // check for an enum cache.  Leave the map in a2 for the subsequent
   // prototype load.
   lw(a2, FieldMemOperand(a1, HeapObject::kMapOffset));
-  lw(a3, FieldMemOperand(a2, Map::kInstanceDescriptorsOrBitField3Offset));
-  JumpIfSmi(a3, call_runtime);
+  lw(a3, FieldMemOperand(a2, Map::kTransitionsOrBackPointerOffset));
+
+  CheckMap(a3,
+           t3,
+           isolate()->factory()->fixed_array_map(),
+           call_runtime,
+           DONT_DO_SMI_CHECK);
+
+  LoadRoot(t3, Heap::kEmptyDescriptorArrayRootIndex);
+  lw(a3, FieldMemOperand(a3, TransitionArray::kDescriptorsOffset));
+  Branch(call_runtime, eq, a3, Operand(t3));
 
   // Check that there is an enum cache in the non-empty instance
   // descriptors (a3).  This is the case if the next enumeration
   // index field does not contain a smi.
-  lw(a3, FieldMemOperand(a3, DescriptorArray::kEnumerationIndexOffset));
+  lw(a3, FieldMemOperand(a3, DescriptorArray::kEnumCacheOffset));
   JumpIfSmi(a3, call_runtime);
 
   // For all objects but the receiver, check that the cache is empty.

@@ -553,6 +553,7 @@ int DisassemblerIA32::F7Instruction(byte* data) {
       case 2: mnem = "not"; break;
       case 3: mnem = "neg"; break;
       case 4: mnem = "mul"; break;
+      case 5: mnem = "imul"; break;
       case 7: mnem = "idiv"; break;
       default: UnimplementedInstruction();
     }
@@ -1263,6 +1264,14 @@ int DisassemblerIA32::InstructionDecode(v8::internal::Vector<char> out_buffer,
             int mod, regop, rm;
             get_modrm(*data, &mod, &regop, &rm);
             AppendToBuffer("andpd %s,%s",
+                           NameOfXMMRegister(regop),
+                           NameOfXMMRegister(rm));
+            data++;
+          } else if (*data == 0x56) {
+            data++;
+            int mod, regop, rm;
+            get_modrm(*data, &mod, &regop, &rm);
+            AppendToBuffer("orpd %s,%s",
                            NameOfXMMRegister(regop),
                            NameOfXMMRegister(rm));
             data++;

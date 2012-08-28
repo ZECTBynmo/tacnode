@@ -2007,21 +2007,22 @@ void V8HeapExplorer::ExtractMapReferences(int entry, Map* map) {
   SetInternalReference(map, entry,
                        "constructor", map->constructor(),
                        Map::kConstructorOffset);
-  if (!map->instance_descriptors()->IsEmpty()) {
-    TagObject(map->instance_descriptors(), "(map descriptors)");
+  if (map->HasTransitionArray()) {
+    TransitionArray* transitions = map->transitions();
+    if (!transitions->descriptors()->IsEmpty()) {
+      DescriptorArray* descriptors = transitions->descriptors();
+      TagObject(descriptors, "(map descriptors)");
+      SetInternalReference(transitions, entry,
+                           "descriptors", descriptors,
+                           TransitionArray::kDescriptorsOffset);
+      IndexedReferencesExtractor refs_extractor(
+          this, transitions, entry);
+      transitions->Iterate(&refs_extractor);
+    }
+    TagObject(transitions, "(transition array)");
     SetInternalReference(map, entry,
-                         "descriptors", map->instance_descriptors(),
-                         Map::kInstanceDescriptorsOrBitField3Offset);
-  }
-  if (map->unchecked_prototype_transitions()->IsFixedArray()) {
-    TagObject(map->prototype_transitions(), "(prototype transitions)");
-    SetInternalReference(map, entry,
-                         "prototype_transitions", map->prototype_transitions(),
-                         Map::kPrototypeTransitionsOrBackPointerOffset);
-  } else {
-    SetInternalReference(map, entry,
-                         "back_pointer", map->GetBackPointer(),
-                         Map::kPrototypeTransitionsOrBackPointerOffset);
+                         "transitions", transitions,
+                         Map::kTransitionsOrBackPointerOffset);
   }
   SetInternalReference(map, entry,
                        "code_cache", map->code_cache(),
@@ -2182,16 +2183,31 @@ void V8HeapExplorer::ExtractPropertyReferences(JSObject* js_obj, int entry) {
       switch (descs->GetType(i)) {
         case FIELD: {
           int index = descs->GetFieldIndex(i);
+
+          String* k = descs->GetKey(i);
           if (index < js_obj->map()->inobject_properties()) {
-            SetPropertyReference(
-                js_obj, entry,
-                descs->GetKey(i), js_obj->InObjectPropertyAt(index),
-                NULL,
-                js_obj->GetInObjectPropertyOffset(index));
+            Object* value = js_obj->InObjectPropertyAt(index);
+            if (k != heap_->hidden_symbol()) {
+              SetPropertyReference(
+                  js_obj, entry,
+                  k, value,
+                  NULL,
+                  js_obj->GetInObjectPropertyOffset(index));
+            } else {
+              TagObject(value, "(hidden properties)");
+              SetInternalReference(
+                  js_obj, entry,
+                  "hidden_properties", value,
+                  js_obj->GetInObjectPropertyOffset(index));
+            }
           } else {
-            SetPropertyReference(
-                js_obj, entry,
-                descs->GetKey(i), js_obj->FastPropertyAt(index));
+            Object* value = js_obj->FastPropertyAt(index);
+            if (k != heap_->hidden_symbol()) {
+              SetPropertyReference(js_obj, entry, k, value);
+            } else {
+              TagObject(value, "(hidden properties)");
+              SetInternalReference(js_obj, entry, "hidden_properties", value);
+            }
           }
           break;
         }
@@ -2218,9 +2234,10 @@ void V8HeapExplorer::ExtractPropertyReferences(JSObject* js_obj, int entry) {
         case NORMAL:  // only in slow mode
         case HANDLER:  // only in lookup results, not in descriptors
         case INTERCEPTOR:  // only in lookup results, not in descriptors
-        case MAP_TRANSITION:  // we do not care about transitions here...
-        case CONSTANT_TRANSITION:
-        case NULL_DESCRIPTOR:  // ... and not about "holes"
+          break;
+        case TRANSITION:
+        case NONEXISTENT:
+          UNREACHABLE();
           break;
       }
     }
@@ -2235,7 +2252,7 @@ void V8HeapExplorer::ExtractPropertyReferences(JSObject* js_obj, int entry) {
         Object* value = target->IsJSGlobalPropertyCell()
             ? JSGlobalPropertyCell::cast(target)->value()
             : target;
-        if (String::cast(k)->length() > 0) {
+        if (k != heap_->hidden_symbol()) {
           SetPropertyReference(js_obj, entry, String::cast(k), value);
         } else {
           TagObject(value, "(hidden properties)");
@@ -2294,11 +2311,12 @@ String* V8HeapExplorer::GetConstructorName(JSObject* object) {
     Object* constructor_prop = NULL;
     LookupResult result(heap->isolate());
     object->LocalLookupRealNamedProperty(heap->constructor_symbol(), &result);
-    if (result.IsProperty()) {
-      constructor_prop = result.GetLazyValue();
-    }
+    if (!result.IsFound()) return object->constructor_name();
+
+    constructor_prop = result.GetLazyValue();
     if (constructor_prop->IsJSFunction()) {
-      Object* maybe_name = JSFunction::cast(constructor_prop)->shared()->name();
+      Object* maybe_name =
+          JSFunction::cast(constructor_prop)->shared()->name();
       if (maybe_name->IsString()) {
         String* name = String::cast(maybe_name);
         if (name->length() > 0) return name;
