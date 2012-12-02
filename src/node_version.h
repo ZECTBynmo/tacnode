@@ -39,7 +39,7 @@
 #else
 # define NODE_VERSION_STRING  NODE_STRINGIFY(NODE_MAJOR_VERSION) "." \
                               NODE_STRINGIFY(NODE_MINOR_VERSION) "." \
-                              NODE_STRINGIFY(NODE_PATCH_VERSION) "-pre"
+                              NODE_STRINGIFY(NODE_PATCH_VERSION) "-pre-streams2"
 #endif
 
 #define NODE_VERSION "v" NODE_VERSION_STRING
