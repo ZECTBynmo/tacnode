@@ -27,8 +27,6 @@ if (!process.versions.openssl) {
 var common = require('../common');
 var assert = require('assert');
 
-assert(0, 'temporarily disabled for streams2 refactor');
-
 var fs = require('fs');
 var net = require('net');
 var http = require('http');
