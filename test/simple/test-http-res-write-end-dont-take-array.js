@@ -58,7 +58,8 @@ server.listen(common.PORT, function() {
     // lazy serial test, becuase we can only call end once per request
     test += 1;
     // do it again to test .end(Buffer);
-    http.get({port: common.PORT}, function() {
+    http.get({port: common.PORT}, function(res) {
+      res.resume();
       server.close();
     });
   });
