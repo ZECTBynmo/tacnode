@@ -29,3 +29,5 @@ var stdin = process.openStdin();
 stdin.on('data', function(data) {
   process.stdout.write(data.toString());
 });
+stdin.resume();
+stdin.read(0);

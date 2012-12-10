@@ -524,7 +524,7 @@
       // stdin starts out life in a paused state, but node doesn't
       // know yet.  Explicitly to readStop() it to put it in the
       // not-reading state.
-      if (stdin._handle && stdin._handle.unref) {
+      if (stdin._handle && stdin._handle.readStop) {
         stdin._handle.reading = false;
         stdin._readableState.reading = false;
         stdin._handle.readStop();
