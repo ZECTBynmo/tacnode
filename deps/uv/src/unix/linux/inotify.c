@@ -64,9 +64,7 @@ static int compare_watchers(const struct watcher_list* a,
 RB_GENERATE_STATIC(watcher_root, watcher_list, entry, compare_watchers)
 
 
-static void uv__inotify_read(uv_loop_t* loop,
-                             uv__io_t* w,
-                             unsigned int revents);
+static void uv__inotify_read(uv_loop_t* loop, uv__io_t* w, int revents);
 
 
 static int new_inotify_fd(void) {
@@ -100,8 +98,11 @@ static int init_inotify(uv_loop_t* loop) {
     return -1;
   }
 
-  uv__io_init(&loop->inotify_read_watcher, uv__inotify_read, loop->inotify_fd);
-  uv__io_start(loop, &loop->inotify_read_watcher, UV__POLLIN);
+  uv__io_init(&loop->inotify_read_watcher,
+              uv__inotify_read,
+              loop->inotify_fd,
+              UV__IO_READ);
+  uv__io_start(loop, &loop->inotify_read_watcher);
 
   return 0;
 }
@@ -114,9 +115,7 @@ static struct watcher_list* find_watcher(uv_loop_t* loop, int wd) {
 }
 
 
-static void uv__inotify_read(uv_loop_t* loop,
-                             uv__io_t* dummy,
-                             unsigned int events) {
+static void uv__inotify_read(uv_loop_t* loop, uv__io_t* dummy, int events) {
   const struct uv__inotify_event* e;
   struct watcher_list* w;
   uv_fs_event_t* h;

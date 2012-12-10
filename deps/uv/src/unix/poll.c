@@ -27,14 +27,15 @@
 #include <errno.h>
 
 
-static void uv__poll_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
+static void uv__poll_io(uv_loop_t* loop, uv__io_t* w, int events) {
   uv_poll_t* handle;
   int pevents;
 
   handle = container_of(w, uv_poll_t, io_watcher);
 
-  if (events & UV__POLLERR) {
-    uv__io_stop(loop, w, UV__POLLIN | UV__POLLOUT);
+  if (events & UV__IO_ERROR) {
+    /* An error happened. Libev has implicitly stopped the watcher, but we */
+    /* need to fix the refcount. */
     uv__handle_stop(handle);
     uv__set_sys_error(handle->loop, EBADF);
     handle->poll_cb(handle, -1, 0);
@@ -42,9 +43,9 @@ static void uv__poll_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
   }
 
   pevents = 0;
-  if (events & UV__POLLIN)
+  if (events & UV__IO_READ)
     pevents |= UV_READABLE;
-  if (events & UV__POLLOUT)
+  if (events & UV__IO_WRITE)
     pevents |= UV_WRITABLE;
 
   handle->poll_cb(handle, 0, pevents);
@@ -53,8 +54,10 @@ static void uv__poll_io(uv_loop_t* loop, uv__io_t* w, unsigned int events) {
 
 int uv_poll_init(uv_loop_t* loop, uv_poll_t* handle, int fd) {
   uv__handle_init(loop, (uv_handle_t*) handle, UV_POLL);
-  uv__io_init(&handle->io_watcher, uv__poll_io, fd);
+  handle->fd = fd;
   handle->poll_cb = NULL;
+  uv__io_init(&handle->io_watcher, uv__poll_io, fd, 0);
+
   return 0;
 }
 
@@ -66,7 +69,7 @@ int uv_poll_init_socket(uv_loop_t* loop, uv_poll_t* handle,
 
 
 static void uv__poll_stop(uv_poll_t* handle) {
-  uv__io_stop(handle->loop, &handle->io_watcher, UV__POLLIN | UV__POLLOUT);
+  uv__io_stop(handle->loop, &handle->io_watcher);
   uv__handle_stop(handle);
 }
 
@@ -84,20 +87,23 @@ int uv_poll_start(uv_poll_t* handle, int pevents, uv_poll_cb poll_cb) {
   assert((pevents & ~(UV_READABLE | UV_WRITABLE)) == 0);
   assert(!(handle->flags & (UV_CLOSING | UV_CLOSED)));
 
-  uv__poll_stop(handle);
-
-  if (pevents == 0)
+  if (pevents == 0) {
+    uv__poll_stop(handle);
     return 0;
+  }
 
   events = 0;
   if (pevents & UV_READABLE)
-    events |= UV__POLLIN;
+    events |= UV__IO_READ;
   if (pevents & UV_WRITABLE)
-    events |= UV__POLLOUT;
+    events |= UV__IO_WRITE;
 
-  uv__io_start(handle->loop, &handle->io_watcher, events);
-  uv__handle_start(handle);
+  uv__io_stop(handle->loop, &handle->io_watcher);
+  uv__io_set(&handle->io_watcher, uv__poll_io, handle->fd, events);
+  uv__io_start(handle->loop, &handle->io_watcher);
+
   handle->poll_cb = poll_cb;
+  uv__handle_start(handle);
 
   return 0;
 }

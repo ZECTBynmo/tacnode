@@ -107,8 +107,7 @@ static int test_async(int nthreads) {
     ASSERT(ctx->main_seen == (unsigned int) NUM_PINGS);
   }
 
-  printf("async%d: %.2f sec (%s/sec)\n",
-         nthreads,
+  printf("%.2f sec (%s/sec)\n",
          time / 1e9,
          fmt(NUM_PINGS / (time / 1e9)));
 

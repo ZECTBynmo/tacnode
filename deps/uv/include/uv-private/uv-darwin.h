@@ -39,7 +39,9 @@
   ngx_queue_t cf_signals;                                                     \
 
 #define UV_PLATFORM_FS_EVENT_FIELDS                                           \
-  uv__io_t event_watcher;                                                     \
+  ev_io event_watcher;                                                        \
+  int fflags;                                                                 \
+  int fd;                                                                     \
   char* realpath;                                                             \
   int realpath_len;                                                           \
   int cf_flags;                                                               \

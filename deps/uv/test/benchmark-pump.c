@@ -203,9 +203,11 @@ static void do_write(uv_stream_t* stream) {
   buf.base = (char*) &write_buffer;
   buf.len = sizeof write_buffer;
 
-  req = (uv_write_t*) req_alloc();
-  r = uv_write(req, stream, &buf, 1, write_cb);
-  ASSERT(r == 0);
+  while (stream->write_queue_size == 0) {
+    req = (uv_write_t*) req_alloc();
+    r = uv_write(req, stream, &buf, 1, write_cb);
+    ASSERT(r == 0);
+  }
 }
 
 

@@ -402,9 +402,7 @@ TEST_IMPL(spawn_preserve_env) {
   options.stdio[1].data.stream = (uv_stream_t*) &out;
   options.stdio_count = 2;
 
-  r = putenv("ENV_TEST=testval");
-  ASSERT(r == 0);
-
+  ASSERT(setenv("ENV_TEST", "testval", 1) == 0);
   /* Explicitly set options.env to NULL to test for env clobbering. */
   options.env = NULL;
 
