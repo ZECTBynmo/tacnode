@@ -119,17 +119,14 @@ static ssize_t uv__fs_futime(uv_fs_t* req) {
   ts[1].tv_sec  = req->mtime;
   ts[1].tv_nsec = (unsigned long)(req->mtime * 1000000) % 1000000 * 1000;
   return uv__utimesat(req->file, NULL, ts, 0);
-#elif defined(__APPLE__)                                                      \
-    || defined(__DragonFly__)                                                 \
-    || defined(__FreeBSD__)                                                   \
-    || defined(__sun)
+#elif HAVE_FUTIMES
   struct timeval tv[2];
   tv[0].tv_sec  = req->atime;
   tv[0].tv_usec = (unsigned long)(req->atime * 1000000) % 1000000;
   tv[1].tv_sec  = req->mtime;
   tv[1].tv_usec = (unsigned long)(req->mtime * 1000000) % 1000000;
   return futimes(req->file, tv);
-#else
+#else /* !HAVE_FUTIMES */
   errno = ENOSYS;
   return -1;
 #endif

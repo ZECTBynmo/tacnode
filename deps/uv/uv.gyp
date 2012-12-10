@@ -202,7 +202,7 @@
             ],
           },
         }],
-        [ 'OS=="freebsd" or OS=="dragonflybsd"', {
+        [ 'OS=="freebsd"', {
           'sources': [ 'src/unix/freebsd.c' ],
           'defines': [
             'EV_CONFIG_H="config_freebsd.h"',
@@ -230,7 +230,7 @@
             ],
           },
         }],
-        [ 'OS in "mac freebsd dragonflybsd openbsd netbsd".split()', {
+        [ 'OS=="mac" or OS=="freebsd" or OS=="openbsd" or OS=="netbsd"', {
           'sources': [ 'src/unix/kqueue.c' ],
         }],
         ['library=="shared_library"', {

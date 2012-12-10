@@ -91,7 +91,8 @@ void uv__udp_finish_close(uv_udp_t* handle) {
     req->bufs = NULL;
 
     if (req->send_cb) {
-      uv__set_artificial_error(handle->loop, UV_ECANCELED);
+      /* FIXME proper error code like UV_EABORTED */
+      uv__set_artificial_error(handle->loop, UV_EINTR);
       req->send_cb(req, -1);
     }
   }
