@@ -201,3 +201,5 @@ echo   vcbuild.bat test           : builds debug build and runs tests
 goto exit
 
 :exit
+	echo Concatinating libraries
+	@python tools/concatlibs.py
