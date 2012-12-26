@@ -23,3 +23,4 @@ Windows:
 
 ### To read more stuff
 Look at the node repository
+https://github.com/joyent/node
