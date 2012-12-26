@@ -1,5 +1,8 @@
-This is a fork of node that builds as a lib. As a post build step (which you can remove) it concatinates all output libraries into one for convenience
+This is a fork of node that builds as a lib. As a post-build step (which you can remove) it concatinates all output libraries into one for convenience
 ===
+NOTE: I haven't tested the concatination step on anything but windows. If it doesn't work, there may be something wrong with how I setup the postbuild step in the gyp file. 
+
+For windows, I ended up calling the library concatination script (tools/concatlibs.py) directly from vcbuild.bat
 
 ### To build:
 
@@ -19,7 +22,15 @@ Windows:
 
     vcbuild.bat
 
+### To Use:
+	```C++
+	// You will need to create a fake argc and argv
+	// Here's the common case, the equivelant of "node myScript.js" from the command line
+	int argc = 1;
+	char* argv = "myScript.js";
 
+	node:Start(argc, &argv);
+	```
 
 ### To read more stuff
 Look at the node repository
