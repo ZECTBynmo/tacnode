@@ -1,4 +1,4 @@
-Evented I/O for V8 javascript. [![Build Status](https://secure.travis-ci.org/joyent/node.png)](http://travis-ci.org/joyent/node)
+This is a fork of node that builds as a lib. As a post build step (which you can remove) it concatinates all output libraries into one for convenience
 ===
 
 ### To build:
