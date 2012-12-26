@@ -23,14 +23,12 @@ Windows:
     vcbuild.bat
 
 ### To Use:
-	```C++
 	// You will need to create a fake argc and argv
 	// Here's the common case, the equivelant of "node myScript.js" from the command line
 	int argc = 1;
 	char* argv = "myScript.js";
 
 	node:Start(argc, &argv);
-	```
 
 ### To read more stuff
 Look at the node repository
