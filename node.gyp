@@ -65,7 +65,7 @@
   'targets': [
     {
       'target_name': 'node',
-      'type': 'executable',
+      'type': '<(library)',
 
       'dependencies': [
         'node_js2c#host',
@@ -76,6 +76,16 @@
         'src/gen',
         'deps/uv/src/ares',
         '<(SHARED_INTERMEDIATE_DIR)' # for node_natives.h
+      ],
+
+      'postbuilds': [
+        {
+          'postbuild_name': 'Concatinating output libraries',
+          'action': [
+            'python',
+            'tools/concatlibs.py',
+          ],
+        },
       ],
 
       'sources': [
