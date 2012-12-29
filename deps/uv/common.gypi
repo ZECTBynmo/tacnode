@@ -63,11 +63,6 @@
             'EnableFunctionLevelLinking': 'true',
             'EnableIntrinsicFunctions': 'true',
           },
-          'VCLibrarianTool': {
-            'AdditionalOptions': [
-              '/LTCG', # link time code generation
-            ],
-          },
           'VCLinkerTool': {
             'LinkTimeCodeGeneration': 1, # link-time code generation
             'OptimizeReferences': 2, # /OPT:REF
