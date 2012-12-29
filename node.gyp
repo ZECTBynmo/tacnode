@@ -205,7 +205,6 @@
             'src/node_win32_etw_provider.cc',
             'src/node_dtrace.cc',
             'src/gen/node_etw_provider.h',
-            'src/gen/node_etw_provider.rc',
           ]
         } ],
         [ 'node_use_perfctr=="true"', {
@@ -216,7 +215,6 @@
             'src/node_win32_perfctr_provider.cc',
             'src/node_counters.cc',
             'src/node_counters.h',
-            'src/gen/node_perfctr_provider.rc',
           ]
         } ],
         [ 'node_shared_v8=="false"', {
