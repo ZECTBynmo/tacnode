@@ -524,8 +524,10 @@
           break;
 
         default:
-          // Probably an error on in uv_guess_handle()
-          throw new Error('Implement me. Unknown stdin file type!');
+          // Assume that we're running embedded within an application
+          var fs = NativeModule.require('fs');
+          stdin = new fs.ReadStream(null, { fd: fd });
+          break;
       }
 
       // For supporting legacy API we put the FD here.
