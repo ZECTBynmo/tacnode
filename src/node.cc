@@ -28,6 +28,7 @@
 
 #include "ares.h"
 #include "uv.h"
+#include "v8.h"
 
 #include "v8-debug.h"
 #if defined HAVE_DTRACE || defined HAVE_ETW || defined HAVE_SYSTEMTAP
@@ -90,6 +91,7 @@ using namespace v8;
 # include <crt_externs.h>
 # define environ (*_NSGetEnviron())
 # elif !defined(_MSC_VER)
+#include "v8/src/isolate.h"
 extern char **environ;
 # endif
 
@@ -2968,20 +2970,78 @@ static char **copy_argv(int argc, char **argv) {
 }
 
 static void runUVOnce(const boost::system::error_code& e, boost::asio::deadline_timer* runUVTimer) {
-	int UVStatus = 1;	// This is the status of the UV message loop, 0 means no updates left
+	// We need to make sure that we have a thread lock before we can run the message loop
+// 	V8::Initialize();
+// 	{
+// 		v8::Isolate* isolate = v8::Isolate::GetCurrent();
+// 		isolate->Enter();
+// 		v8::Locker locker(isolate);
+// 
+// 		// If we've achieved a thread lock, run UV
+// 		if( locker.IsLocked(isolate) ) {
+// 			int UVStatus = 1;	// This is the status of the UV message loop, 0 means no updates left
+// 
+// 			// Run UV until we don't have any more updates
+// 			while( !e && UVStatus ) {
+// 				UVStatus = uv_run_once(uv_default_loop());
+// 			}
+// 
+// 			uv_run_once(uv_default_loop());
+// 
+// 			// Push back the expiration time of the timer for next round
+// 			runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
+// 
+// 			// Wait on the next callback
+// 			runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
+// 		} // end if thread locked
+// 
+// 		isolate->Exit();
+// 	}	
 
-	// Run UV until we don't have any more updates
-	while( !e && UVStatus ) {
-		UVStatus = uv_run_once(uv_default_loop());
+
+
+
+
+
+
+
+
+
+
+
+	Isolate* isolate = Isolate::New();
+	{
+		v8::Isolate::Scope iscope(isolate);
+
+		v8::V8::Initialize();
+
+		v8::Locker locker(isolate);
+
+		// Create a stack-allocated handle scope.
+		HandleScope handle_scope;
+
+		// Create a new context.
+		Persistent<Context> context = Context::New();
+
+// 		int UVStatus = 1;	// This is the status of the UV message loop, 0 means no updates left
+// 
+// 		// Run UV until we don't have any more updates
+// 		while( !e && UVStatus ) {
+// 			UVStatus = uv_run_once(uv_default_loop());
+// 		}
+
+		uv_run_once(uv_default_loop());
+
+		// Push back the expiration time of the timer for next round
+		runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
+
+		// Wait on the next callback
+		runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
+
+		// Dispose the persistent context.
+		context.Dispose();
 	}
-
-	uv_run_once(uv_default_loop());
-
-	// Push back the expiration time of the timer for next round
-	runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
-
-	// Wait on the next callback
-	runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
+	isolate->Dispose();
 } // end runUVOnce()
 
 void RunNonBlockingLoop() {
@@ -3037,7 +3097,10 @@ int Start(int argc, char *argv[], bool bBlockingIO) {
 		// there are no watchers on the loop (except for the ones that were
 		// uv_unref'd) then this function exits. As long as there are active
 		// watchers, it blocks.
-		uv_run(uv_default_loop());
+		uv_default_loop_init();
+		uv_loop_t* loop = uv_loop_init();
+
+		uv_run(loop);
 
 		EmitExit(process_l);
 		RunAtExit();
