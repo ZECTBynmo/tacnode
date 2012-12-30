@@ -12,7 +12,7 @@ if /i "%1"=="--?" goto help
 if /i "%1"=="/?" goto help
 
 @rem Process arguments.
-set config=Release
+set config=Debug
 set msiplatform=x86
 set target=Build
 set target_arch=ia32
