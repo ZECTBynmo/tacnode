@@ -2973,14 +2973,31 @@ static void runUVOnce(const boost::system::error_code& e, boost::asio::deadline_
 	// Run UV until we don't have any more updates
 	while( !e && UVStatus ) {
 		UVStatus = uv_run_once(uv_default_loop());
-	}	
+	}
+
+	uv_run_once(uv_default_loop());
 
 	// Push back the expiration time of the timer for next round
-	runUVTimer->expires_at(runUVTimer->expires_at() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
+	runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
 
 	// Wait on the next callback
 	runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
 } // end runUVOnce()
+
+void RunNonBlockingLoop() {
+	// We're going to run the UV message loop asynchronously, so that we can allow 
+	// our main thread to process other events. We kick off a timer here, and then
+	// continuously restart the timer. You will need to dispose of UV and V8 manually,
+	// because there is no way for the timer interval to know when to stop.
+	//
+	// You can change UV_UPDATE_INTERVAL_MS to tune the performance of node to your application
+	boost::asio::io_service io;
+	boost::asio::deadline_timer runUVTimer(io, boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
+
+	runUVTimer.async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, &runUVTimer));
+
+	io.run();
+}
 
 int Start(int argc, char *argv[], bool bBlockingIO) {
   // Hack aroung with the argv pointer. Used for process.title = "blah".
@@ -3020,7 +3037,7 @@ int Start(int argc, char *argv[], bool bBlockingIO) {
 		// there are no watchers on the loop (except for the ones that were
 		// uv_unref'd) then this function exits. As long as there are active
 		// watchers, it blocks.
-		uv_run_once(uv_default_loop());
+		uv_run(uv_default_loop());
 
 		EmitExit(process_l);
 		RunAtExit();
@@ -3028,20 +3045,7 @@ int Start(int argc, char *argv[], bool bBlockingIO) {
 #ifndef NDEBUG
 		context.Dispose();
 #endif
-	} else {
-		// We're going to run the UV message loop asynchronously, so that we can allow 
-		// our main thread to process other events. We kick off a timer here, and then
-		// continuously restart the timer. You will need to dispose of UV and V8 manually,
-		// because there is no way for the timer interval to know when to stop.
-		//
-		// You can change UV_UPDATE_INTERVAL_MS to tune the performance of node to your application
-		boost::asio::io_service io;
-		boost::asio::deadline_timer runUVTimer(io, boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
-
-		runUVTimer.async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, &runUVTimer));
-
-		io.run();
-	}    
+	}
   }
 
 #ifndef NDEBUG
