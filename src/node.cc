@@ -22,6 +22,9 @@
 #include "node.h"
 #include "req_wrap.h"
 #include "handle_wrap.h"
+#include "boost/asio.hpp"
+#include "boost/bind.hpp"
+#include "boost/date_time/posix_time/posix_time.hpp"
 
 #include "ares.h"
 #include "uv.h"
@@ -91,6 +94,8 @@ extern char **environ;
 # endif
 
 namespace node {
+
+const int UV_UPDATE_INTERVAL_MS = 5;
 
 ngx_queue_t handle_wrap_queue = { &handle_wrap_queue, &handle_wrap_queue };
 ngx_queue_t req_wrap_queue = { &req_wrap_queue, &req_wrap_queue };
@@ -2962,7 +2967,22 @@ static char **copy_argv(int argc, char **argv) {
   return argv_copy;
 }
 
-int Start(int argc, char *argv[]) {
+static void runUVOnce(const boost::system::error_code& e, boost::asio::deadline_timer* runUVTimer) {
+	int UVStatus = 1;	// This is the status of the UV message loop, 0 means no updates left
+
+	// Run UV until we don't have any more updates
+	while( !e && UVStatus ) {
+		UVStatus = uv_run_once(uv_default_loop());
+	}	
+
+	// Push back the expiration time of the timer for next round
+	runUVTimer->expires_at(runUVTimer->expires_at() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
+
+	// Wait on the next callback
+	runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
+} // end runUVOnce()
+
+int Start(int argc, char *argv[], bool bBlockingIO) {
   // Hack aroung with the argv pointer. Used for process.title = "blah".
   argv = uv_setup_args(argc, argv);
 
@@ -2994,19 +3014,34 @@ int Start(int argc, char *argv[]) {
     // so your next reading stop should be node::Load()!
     Load(process_l);
 
-    // All our arguments are loaded. We've evaluated all of the scripts. We
-    // might even have created TCP servers. Now we enter the main eventloop. If
-    // there are no watchers on the loop (except for the ones that were
-    // uv_unref'd) then this function exits. As long as there are active
-    // watchers, it blocks.
-    uv_run(uv_default_loop());
+	if( bBlockingIO ) {
+		// All our arguments are loaded. We've evaluated all of the scripts. We
+		// might even have created TCP servers. Now we enter the main eventloop. If
+		// there are no watchers on the loop (except for the ones that were
+		// uv_unref'd) then this function exits. As long as there are active
+		// watchers, it blocks.
+		uv_run_once(uv_default_loop());
 
-    EmitExit(process_l);
-    RunAtExit();
+		EmitExit(process_l);
+		RunAtExit();
 
 #ifndef NDEBUG
-    context.Dispose();
+		context.Dispose();
 #endif
+	} else {
+		// We're going to run the UV message loop asynchronously, so that we can allow 
+		// our main thread to process other events. We kick off a timer here, and then
+		// continuously restart the timer. You will need to dispose of UV and V8 manually,
+		// because there is no way for the timer interval to know when to stop.
+		//
+		// You can change UV_UPDATE_INTERVAL_MS to tune the performance of node to your application
+		boost::asio::io_service io;
+		boost::asio::deadline_timer runUVTimer(io, boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
+
+		runUVTimer.async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, &runUVTimer));
+
+		io.run();
+	}    
   }
 
 #ifndef NDEBUG
@@ -3019,6 +3054,5 @@ int Start(int argc, char *argv[]) {
 
   return 0;
 }
-
 
 }  // namespace node
