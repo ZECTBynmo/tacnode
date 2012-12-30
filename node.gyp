@@ -75,6 +75,7 @@
         'src',
         'src/gen',
         'deps/uv/src/ares',
+        'deps',
         '<(SHARED_INTERMEDIATE_DIR)' # for node_natives.h
       ],
 
