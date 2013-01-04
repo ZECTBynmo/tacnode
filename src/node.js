@@ -526,7 +526,11 @@
         default:
           // Assume that we're running embedded within an application
           var fs = NativeModule.require('fs');
-          stdin = new fs.ReadStream(null, { fd: fd });
+          stdin = new fs.ReadStream(null, { 
+            fd: fd,
+            readable: false,
+            writable: false 
+          });
           break;
       }
 
