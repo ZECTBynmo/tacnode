@@ -22,9 +22,6 @@
 #include "node.h"
 #include "req_wrap.h"
 #include "handle_wrap.h"
-#include "boost/asio.hpp"
-#include "boost/bind.hpp"
-#include "boost/date_time/posix_time/posix_time.hpp"
 
 #include "ares.h"
 #include "uv.h"
@@ -2994,146 +2991,51 @@ static void runUVAsync() {
 		uv_run(loop);
 	} 
 }
-
-static void runUVOnce(const boost::system::error_code& e, boost::asio::deadline_timer* runUVTimer) {
-	// We need to make sure that we have a thread lock before we can run the message loop
-// 	V8::Initialize();
-// 	{
-// 		v8::Isolate* isolate = v8::Isolate::GetCurrent();
-// 		isolate->Enter();
-// 		v8::Locker locker(isolate);
 // 
-// 		// If we've achieved a thread lock, run UV
-// 		if( locker.IsLocked(isolate) ) {
-// 			int UVStatus = 1;	// This is the status of the UV message loop, 0 means no updates left
-// 
-// 			// Run UV until we don't have any more updates
-// 			while( !e && UVStatus ) {
-// 				UVStatus = uv_run_once(uv_default_loop());
-// 			}
-// 
-// 			uv_run_once(uv_default_loop());
-// 
-// 			// Push back the expiration time of the timer for next round
-// 			runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
-// 
-// 			// Wait on the next callback
-// 			runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
-// 		} // end if thread locked
-// 
-// 		isolate->Exit();
-// 	}	
-
-
-
-	V8::Initialize();
-	Isolate* isolate = Isolate::New();
-	{
-		using namespace v8;
-		Persistent<Context> context;
-
-		{
-			v8::Locker locker(isolate);
-			HandleScope handle_scope;
-			context = Persistent<Context>::New(Context::New());
-		}
-
-		uv_run(uv_default_loop());
-
-		// Push back the expiration time of the timer for next round
-		runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
-
-		// Wait on the next callback
-		runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
-
-		{
-			v8::Locker locker(isolate);
-			Context::Scope context_scope(context);
-			HandleScope handle_scope;
-			Script::Compile(String::New("1"))->Run();
-		}
-
-		context.Dispose();
-	} 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// 	Isolate* isolate = Isolate::New();
-// 	// V8 not locked.
-// 	{
-// 		//v8::Locker locker(isolate);
-// 		g_locker = new v8::Locker( isolate );
-// 		//m_locker = v8::Locker(isolate);
-// 		Isolate::Scope isolate_scope(isolate);
-// 		// V8 locked.
-// 		{
-// // 			v8::Locker another_locker(isolate);
-// // 			// V8 still locked (2 levels).
-// // 			{
-// // 				isolate->Exit();
-// // 				v8::Unlocker unlocker(isolate);
-// // 				// V8 not locked.
-// // 			}
-// //			isolate->Enter();
-// 			// V8 locked again (2 levels).
-// 
-// 			uv_run_once(uv_default_loop());
-// 
-// 			// Push back the expiration time of the timer for next round
-// 			runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
-// 
-// 			// Wait on the next callback
-// 			runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
-// 		}
-// 		// V8 still locked (1 level).
-// 	}
-// 	// V8 Now no longer locked.
-
-
-
-
-
-
-
-
-
-
-// 	Isolate* isolate = Isolate::New();
-// 	{
-// 		v8::Isolate::Scope iscope(isolate);
-// 
-// 		v8::V8::Initialize();
-// 
-// 		v8::Locker locker(isolate);
-// 
-// 		// Create a stack-allocated handle scope.
-// 		HandleScope handle_scope;
-// 
-// 		// Create a new context.
-// 		//Persistent<Context> context = Context::New();
-// 
-// // 		int UVStatus = 1;	// This is the status of the UV message loop, 0 means no updates left
+// static void runUVOnce(const boost::system::error_code& e, boost::asio::deadline_timer* runUVTimer) {
+// 	// We need to make sure that we have a thread lock before we can run the message loop
+// // 	V8::Initialize();
+// // 	{
+// // 		v8::Isolate* isolate = v8::Isolate::GetCurrent();
+// // 		isolate->Enter();
+// // 		v8::Locker locker(isolate);
 // // 
-// // 		// Run UV until we don't have any more updates
-// // 		while( !e && UVStatus ) {
-// // 			UVStatus = uv_run_once(uv_default_loop());
-// // 		}
+// // 		// If we've achieved a thread lock, run UV
+// // 		if( locker.IsLocked(isolate) ) {
+// // 			int UVStatus = 1;	// This is the status of the UV message loop, 0 means no updates left
+// // 
+// // 			// Run UV until we don't have any more updates
+// // 			while( !e && UVStatus ) {
+// // 				UVStatus = uv_run_once(uv_default_loop());
+// // 			}
+// // 
+// // 			uv_run_once(uv_default_loop());
+// // 
+// // 			// Push back the expiration time of the timer for next round
+// // 			runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
+// // 
+// // 			// Wait on the next callback
+// // 			runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
+// // 		} // end if thread locked
+// // 
+// // 		isolate->Exit();
+// // 	}	
 // 
-// 		uv_run_once(uv_default_loop());
+// 
+// 
+// 	V8::Initialize();
+// 	Isolate* isolate = Isolate::New();
+// 	{
+// 		using namespace v8;
+// 		Persistent<Context> context;
+// 
+// 		{
+// 			v8::Locker locker(isolate);
+// 			HandleScope handle_scope;
+// 			context = Persistent<Context>::New(Context::New());
+// 		}
+// 
+// 		uv_run(uv_default_loop());
 // 
 // 		// Push back the expiration time of the timer for next round
 // 		runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
@@ -3141,27 +3043,122 @@ static void runUVOnce(const boost::system::error_code& e, boost::asio::deadline_
 // 		// Wait on the next callback
 // 		runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
 // 
-// 		// Dispose the persistent context.
-// 		//context.Dispose();
-// 	}
-// 	isolate->Dispose();
-
-} // end runUVOnce()
-
-void RunNonBlockingLoop() {
-	// We're going to run the UV message loop asynchronously, so that we can allow 
-	// our main thread to process other events. We kick off a timer here, and then
-	// continuously restart the timer. You will need to dispose of UV and V8 manually,
-	// because there is no way for the timer interval to know when to stop.
-	//
-	// You can change UV_UPDATE_INTERVAL_MS to tune the performance of node to your application
-	boost::asio::io_service io;
-	boost::asio::deadline_timer runUVTimer(io, boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
-
-	runUVTimer.async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, &runUVTimer));
-
-	io.run();
-}
+// 		{
+// 			v8::Locker locker(isolate);
+// 			Context::Scope context_scope(context);
+// 			HandleScope handle_scope;
+// 			Script::Compile(String::New("1"))->Run();
+// 		}
+// 
+// 		context.Dispose();
+// 	} 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// // 	Isolate* isolate = Isolate::New();
+// // 	// V8 not locked.
+// // 	{
+// // 		//v8::Locker locker(isolate);
+// // 		g_locker = new v8::Locker( isolate );
+// // 		//m_locker = v8::Locker(isolate);
+// // 		Isolate::Scope isolate_scope(isolate);
+// // 		// V8 locked.
+// // 		{
+// // // 			v8::Locker another_locker(isolate);
+// // // 			// V8 still locked (2 levels).
+// // // 			{
+// // // 				isolate->Exit();
+// // // 				v8::Unlocker unlocker(isolate);
+// // // 				// V8 not locked.
+// // // 			}
+// // //			isolate->Enter();
+// // 			// V8 locked again (2 levels).
+// // 
+// // 			uv_run_once(uv_default_loop());
+// // 
+// // 			// Push back the expiration time of the timer for next round
+// // 			runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
+// // 
+// // 			// Wait on the next callback
+// // 			runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
+// // 		}
+// // 		// V8 still locked (1 level).
+// // 	}
+// // 	// V8 Now no longer locked.
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// // 	Isolate* isolate = Isolate::New();
+// // 	{
+// // 		v8::Isolate::Scope iscope(isolate);
+// // 
+// // 		v8::V8::Initialize();
+// // 
+// // 		v8::Locker locker(isolate);
+// // 
+// // 		// Create a stack-allocated handle scope.
+// // 		HandleScope handle_scope;
+// // 
+// // 		// Create a new context.
+// // 		//Persistent<Context> context = Context::New();
+// // 
+// // // 		int UVStatus = 1;	// This is the status of the UV message loop, 0 means no updates left
+// // // 
+// // // 		// Run UV until we don't have any more updates
+// // // 		while( !e && UVStatus ) {
+// // // 			UVStatus = uv_run_once(uv_default_loop());
+// // // 		}
+// // 
+// // 		uv_run_once(uv_default_loop());
+// // 
+// // 		// Push back the expiration time of the timer for next round
+// // 		runUVTimer->expires_at(boost::posix_time::second_clock::local_time() + boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
+// // 
+// // 		// Wait on the next callback
+// // 		runUVTimer->async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, runUVTimer));
+// // 
+// // 		// Dispose the persistent context.
+// // 		//context.Dispose();
+// // 	}
+// // 	isolate->Dispose();
+// 
+// } // end runUVOnce()
+// 
+// void RunNonBlockingLoop() {
+// 	// We're going to run the UV message loop asynchronously, so that we can allow 
+// 	// our main thread to process other events. We kick off a timer here, and then
+// 	// continuously restart the timer. You will need to dispose of UV and V8 manually,
+// 	// because there is no way for the timer interval to know when to stop.
+// 	//
+// 	// You can change UV_UPDATE_INTERVAL_MS to tune the performance of node to your application
+// 	boost::asio::io_service io;
+// 	boost::asio::deadline_timer runUVTimer(io, boost::posix_time::milliseconds(UV_UPDATE_INTERVAL_MS));
+// 
+// 	runUVTimer.async_wait(boost::bind(runUVOnce, boost::asio::placeholders::error, &runUVTimer));
+// 
+// 	io.run();
+// }
 
 void RunBlockingLoopAsync() {
 	// We're goign to spin up a new thread where a blocking uv event loop can run

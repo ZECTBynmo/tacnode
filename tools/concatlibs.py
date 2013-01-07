@@ -14,6 +14,8 @@ currentPath = os.getcwd()
 config = "Debug"
 boostLocation = "C:/boost"
 
+boostLibString = "libboost_system-vc90-s-1_52.lib" if config == "Release" else "libboost_system-vc90-sgd-1_52.lib";
+
 # Main list of libraries to be concatinated into the final library 
 # NOTE: For non-windows environments, the .lib is replaced with .o below
 #
@@ -37,7 +39,7 @@ inputLibs = [
 	currentPath+'/'+config+"/lib/zlib.lib", 
 
 	# Boost
-	boostLocation+"/boost/bin.v2/libs/system/build/msvc-9.0/"+config+"/address-model-64/architecture-x86/link-static/runtime-link-static/libboost_system-vc90-sgd-1_52.lib"
+	boostLocation+"/boost/bin.v2/libs/system/build/msvc-9.0/"+config+"/address-model-64/architecture-x86/link-static/runtime-link-static/" + boostLibString
 ]
 
 inputLibString = ""
