@@ -453,7 +453,11 @@
 
       default:
         // Probably an error on in uv_guess_handle()
-        throw new Error('Implement me. Unknown stream file type!');
+        //throw new Error('Implement me. Unknown stream file type!');
+        var fs = NativeModule.require('fs');
+        stream = new fs.SyncWriteStream(fd);
+        stream._type = 'fs';
+        break;
     }
 
     // For supporting legacy API we put the FD here.
