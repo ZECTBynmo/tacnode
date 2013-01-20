@@ -39,7 +39,7 @@ inputLibs = [
 	currentPath+'/'+config+"/lib/zlib.lib", 
 
 	# Boost
-	boostLocation+"/boost/bin.v2/libs/system/build/msvc-9.0/"+config+"/address-model-64/architecture-x86/link-static/runtime-link-static/" + boostLibString
+	#boostLocation+"/boost/bin.v2/libs/system/build/msvc-9.0/"+config+"/address-model-64/architecture-x86/link-static/runtime-link-static/" + boostLibString
 ]
 
 inputLibString = ""
