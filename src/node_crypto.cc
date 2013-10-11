@@ -663,7 +663,7 @@ Handle<Value> SecureContext::LoadPKCS12(const Arguments& args) {
             String::New("Bad password")));
     }
     pass = new char[passlen + 1];
-    int pass_written = DecodeWrite(pass, passlen, args[1], BINARY);
+    int pass_written = DecodeWrite(pass, passlen, args[1], BINARY_ENC);
 
     assert(pass_written == passlen);
     pass[passlen] = '\0';
@@ -1611,7 +1611,7 @@ Handle<Value> Connection::GetSession(const Arguments& args) {
     unsigned char* sbuf = new unsigned char[slen];
     unsigned char* p = sbuf;
     i2d_SSL_SESSION(sess, &p);
-    Local<Value> s = Encode(sbuf, slen, BINARY);
+    Local<Value> s = Encode(sbuf, slen, BINARY_ENC);
     delete[] sbuf;
     return scope.Close(s);
   }
@@ -1640,7 +1640,7 @@ Handle<Value> Connection::SetSession(const Arguments& args) {
 
   char* sbuf = new char[slen];
 
-  ssize_t wlen = DecodeWrite(sbuf, slen, args[0], BINARY);
+  ssize_t wlen = DecodeWrite(sbuf, slen, args[0], BINARY_ENC);
   assert(wlen == slen);
 
   const unsigned char* p = reinterpret_cast<const unsigned char*>(sbuf);
@@ -2140,7 +2140,7 @@ class Cipher : public ObjectWrap {
     }
 
     char* key_buf = new char[key_buf_len];
-    ssize_t key_written = DecodeWrite(key_buf, key_buf_len, args[1], BINARY);
+    ssize_t key_written = DecodeWrite(key_buf, key_buf_len, args[1], BINARY_ENC);
     assert(key_written == key_buf_len);
 
     String::Utf8Value cipherType(args[0]);
@@ -2189,11 +2189,11 @@ class Cipher : public ObjectWrap {
     }
 
     char* key_buf = new char[key_len];
-    ssize_t key_written = DecodeWrite(key_buf, key_len, args[1], BINARY);
+    ssize_t key_written = DecodeWrite(key_buf, key_len, args[1], BINARY_ENC);
     assert(key_written == key_len);
 
     char* iv_buf = new char[iv_len];
-    ssize_t iv_written = DecodeWrite(iv_buf, iv_len, args[2], BINARY);
+    ssize_t iv_written = DecodeWrite(iv_buf, iv_len, args[2], BINARY_ENC);
     assert(iv_written == iv_len);
 
     String::Utf8Value cipherType(args[0]);
@@ -2452,7 +2452,7 @@ class Decipher : public ObjectWrap {
     }
 
     char* key_buf = new char[key_len];
-    ssize_t key_written = DecodeWrite(key_buf, key_len, args[1], BINARY);
+    ssize_t key_written = DecodeWrite(key_buf, key_len, args[1], BINARY_ENC);
     assert(key_written == key_len);
 
     String::Utf8Value cipherType(args[0]);
@@ -2499,11 +2499,11 @@ class Decipher : public ObjectWrap {
     }
 
     char* key_buf = new char[key_len];
-    ssize_t key_written = DecodeWrite(key_buf, key_len, args[1], BINARY);
+    ssize_t key_written = DecodeWrite(key_buf, key_len, args[1], BINARY_ENC);
     assert(key_written == key_len);
 
     char* iv_buf = new char[iv_len];
-    ssize_t iv_written = DecodeWrite(iv_buf, iv_len, args[2], BINARY);
+    ssize_t iv_written = DecodeWrite(iv_buf, iv_len, args[2], BINARY_ENC);
     assert(iv_written == iv_len);
 
     String::Utf8Value cipherType(args[0]);
@@ -2700,7 +2700,7 @@ class Hmac : public ObjectWrap {
       r = hmac->HmacInit(*hashType, buffer_data, buffer_length);
     } else {
       char* buf = new char[len];
-      ssize_t written = DecodeWrite(buf, len, args[1], BINARY);
+      ssize_t written = DecodeWrite(buf, len, args[1], BINARY_ENC);
       assert(written == len);
 
       r = hmac->HmacInit(*hashType, buf, len);
@@ -3230,7 +3230,7 @@ class Verify : public ObjectWrap {
     }
 
     char* kbuf = new char[klen];
-    ssize_t kwritten = DecodeWrite(kbuf, klen, args[0], BINARY);
+    ssize_t kwritten = DecodeWrite(kbuf, klen, args[0], BINARY_ENC);
     assert(kwritten == klen);
 
     ASSERT_IS_BUFFER(args[1]);
@@ -3243,7 +3243,7 @@ class Verify : public ObjectWrap {
     }
 
     unsigned char* hbuf = new unsigned char[hlen];
-    ssize_t hwritten = DecodeWrite((char*)hbuf, hlen, args[1], BINARY);
+    ssize_t hwritten = DecodeWrite((char*)hbuf, hlen, args[1], BINARY_ENC);
     assert(hwritten == hlen);
 
     int r=-1;
@@ -3767,7 +3767,7 @@ Handle<Value> PBKDF2(const Arguments& args) {
   }
 
   pass = new char[passlen];
-  pass_written = DecodeWrite(pass, passlen, args[0], BINARY);
+  pass_written = DecodeWrite(pass, passlen, args[0], BINARY_ENC);
   assert(pass_written == passlen);
 
   ASSERT_IS_BUFFER(args[1]);
@@ -3778,7 +3778,7 @@ Handle<Value> PBKDF2(const Arguments& args) {
   }
 
   salt = new char[saltlen];
-  salt_written = DecodeWrite(salt, saltlen, args[1], BINARY);
+  salt_written = DecodeWrite(salt, saltlen, args[1], BINARY_ENC);
   assert(salt_written == saltlen);
 
   if (!args[2]->IsNumber()) {

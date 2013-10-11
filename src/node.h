@@ -87,7 +87,7 @@ namespace node {
 
 NODE_EXTERN extern bool no_deprecation;
 
-NODE_EXTERN int Start(int argc, char *argv[], bool bRunBockingIO = true);
+NODE_EXTERN int Start( int argc, char *argv[], v8::Handle<v8::Value> processObjectAddition = v8::Handle<v8::Value>(), char* strProcessObjectAdditionName = "" );
 NODE_EXTERN void RunNonBlockingLoop();
 NODE_EXTERN void RunBlockingLoopAsync();
 
@@ -95,7 +95,7 @@ static uv_thread_t asyncBlockingThrddead;
 
 
 char** Init(int argc, char *argv[]);
-v8::Handle<v8::Object> SetupProcessObject(int argc, char *argv[]);
+v8::Handle<v8::Object> SetupProcessObject( int argc, char *argv[], v8::Handle<v8::Value> processAddition, char* strProcessAdditionName );
 void Load(v8::Handle<v8::Object> process);
 void EmitExit(v8::Handle<v8::Object> process);
 
@@ -132,24 +132,24 @@ void SetPrototypeMethod(target_t target,
 #define NODE_SET_METHOD node::SetMethod
 #define NODE_SET_PROTOTYPE_METHOD node::SetPrototypeMethod
 
-enum encoding {ASCII, UTF8, BASE64, UCS2, BINARY, HEX, BUFFER};
+enum encoding {ASCII, UTF8, BASE64, UCS2, BINARY_ENC, HEX, BUFFER};
 enum encoding ParseEncoding(v8::Handle<v8::Value> encoding_v,
-                            enum encoding _default = BINARY);
+                            enum encoding _default = BINARY_ENC);
 NODE_EXTERN void FatalException(v8::TryCatch &try_catch);
 void DisplayExceptionLine(v8::TryCatch &try_catch); // hack
 
 NODE_EXTERN v8::Local<v8::Value> Encode(const void *buf, size_t len,
-                                        enum encoding encoding = BINARY);
+                                        enum encoding encoding = BINARY_ENC);
 
 // Returns -1 if the handle was not valid for decoding
 NODE_EXTERN ssize_t DecodeBytes(v8::Handle<v8::Value>,
-                                enum encoding encoding = BINARY);
+                                enum encoding encoding = BINARY_ENC);
 
 // returns bytes written.
 NODE_EXTERN ssize_t DecodeWrite(char *buf,
                                 size_t buflen,
                                 v8::Handle<v8::Value>,
-                                enum encoding encoding = BINARY);
+                                enum encoding encoding = BINARY_ENC);
 
 v8::Local<v8::Object> BuildStatsObject(const uv_statbuf_t* s);
 

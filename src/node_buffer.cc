@@ -240,7 +240,7 @@ Handle<Value> Buffer::BinarySlice(const Arguments &args) {
   char *data = parent->data_ + start;
   //Local<String> string = String::New(data, end - start);
 
-  Local<Value> b =  Encode(data, end - start, BINARY);
+  Local<Value> b =  Encode(data, end - start, BINARY_ENC);
 
   return scope.Close(b);
 }
@@ -667,7 +667,7 @@ Handle<Value> Buffer::BinaryWrite(const Arguments &args) {
                                              : args[2]->Uint32Value();
   max_length = MIN(length, MIN(buffer->length_ - offset, max_length));
 
-  int written = DecodeWrite(p, max_length, s, BINARY);
+  int written = DecodeWrite(p, max_length, s, BINARY_ENC);
 
   constructor_template->GetFunction()->Set(chars_written_sym,
                                            Integer::New(written));

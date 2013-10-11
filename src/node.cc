@@ -1006,7 +1006,7 @@ enum encoding ParseEncoding(Handle<Value> encoding_v, enum encoding _default) {
   } else if (strcasecmp(*encoding, "utf-16le") == 0) {
     return UCS2;
   } else if (strcasecmp(*encoding, "binary") == 0) {
-    return BINARY;
+    return BINARY_ENC;
   } else if (strcasecmp(*encoding, "buffer") == 0) {
     return BUFFER;
   } else if (strcasecmp(*encoding, "hex") == 0) {
@@ -1016,13 +1016,13 @@ enum encoding ParseEncoding(Handle<Value> encoding_v, enum encoding _default) {
       fprintf(stderr, "'raw' (array of integers) has been removed. "
                       "Use 'binary'.\n");
     }
-    return BINARY;
+    return BINARY_ENC;
   } else if (strcasecmp(*encoding, "raws") == 0) {
     if (!no_deprecation) {
       fprintf(stderr, "'raws' encoding has been renamed to 'binary'. "
                       "Please update your code.\n");
     }
-    return BINARY;
+    return BINARY_ENC;
   } else {
     return _default;
   }
@@ -1038,7 +1038,7 @@ Local<Value> Encode(const void *buf, size_t len, enum encoding encoding) {
 
   if (!len) return scope.Close(String::Empty());
 
-  if (encoding == BINARY) {
+  if (encoding == BINARY_ENC) {
     const unsigned char *cbuf = static_cast<const unsigned char*>(buf);
     uint16_t * twobytebuf = new uint16_t[len];
     for (size_t i = 0; i < len; i++) {
@@ -1066,7 +1066,7 @@ ssize_t DecodeBytes(v8::Handle<v8::Value> val, enum encoding encoding) {
     return -1;
   }
 
-  if ((encoding == BUFFER || encoding == BINARY) && Buffer::HasInstance(val)) {
+  if ((encoding == BUFFER || encoding == BINARY_ENC) && Buffer::HasInstance(val)) {
     return Buffer::Length(val->ToObject());
   }
 
@@ -1105,7 +1105,7 @@ ssize_t DecodeWrite(char *buf,
 
   bool is_buffer = Buffer::HasInstance(val);
 
-  if (is_buffer && (encoding == BINARY || encoding == BUFFER)) {
+  if (is_buffer && (encoding == BINARY_ENC || encoding == BUFFER)) {
     // fast path, copy buffer data
     const char* data = Buffer::Data(val.As<Object>());
     size_t size = Buffer::Length(val.As<Object>());
@@ -1136,7 +1136,7 @@ ssize_t DecodeWrite(char *buf,
 
   // THIS IS AWFUL!!! FIXME
 
-  assert(encoding == BINARY);
+  assert(encoding == BINARY_ENC);
 
   uint16_t * twobytebuf = new uint16_t[buflen];
 
@@ -2191,7 +2191,7 @@ static Handle<Value> DebugProcess(const Arguments& args);
 static Handle<Value> DebugPause(const Arguments& args);
 static Handle<Value> DebugEnd(const Arguments& args);
 
-Handle<Object> SetupProcessObject(int argc, char *argv[]) {
+Handle<Object> SetupProcessObject( int argc, char *argv[], v8::Handle<v8::Value> processAddition, char* strProcessAdditionName ) {
   HandleScope scope;
 
   int i, j;
@@ -2244,7 +2244,11 @@ Handle<Object> SetupProcessObject(int argc, char *argv[]) {
                 String::New(OPENSSL_VERSION_TEXT + i, j - i));
 #endif
 
+//   Persistent<Object> processObj = processAddition->ToObject();
 
+  // Setup our JST object if it has a name
+  if( strProcessAdditionName != "" )
+	process->Set(String::NewSymbol(strProcessAdditionName), processAddition->ToObject() );
 
   // process.arch
   process->Set(String::NewSymbol("arch"), String::New(ARCH));
@@ -3168,7 +3172,7 @@ void RunBlockingLoopAsync() {
 	uv_thread_join( &asyncBlockingThrddead );
 }
 
-int Start(int argc, char *argv[], bool bBlockingIO) {
+int Start( int argc, char *argv[], v8::Handle<v8::Value> processObjectAddition, char* strProcessObjectAdditionName ) {
   // Hack aroung with the argv pointer. Used for process.title = "blah".
   argv = uv_setup_args(argc, argv);
 
@@ -3193,14 +3197,14 @@ int Start(int argc, char *argv[], bool bBlockingIO) {
     domain_symbol = NODE_PSYMBOL("domain");
 
     // Use original argv, as we're just copying values out of it.
-    Handle<Object> process_l = SetupProcessObject(argc, argv);
+    Handle<Object> process_l = SetupProcessObject( argc, argv, processObjectAddition, strProcessObjectAdditionName );
     v8_typed_array::AttachBindings(context->Global());
 
     // Create all the objects, load modules, do everything.
     // so your next reading stop should be node::Load()!
     Load(process_l);
 
-	if( bBlockingIO ) {
+	if( true ) {
 		// All our arguments are loaded. We've evaluated all of the scripts. We
 		// might even have created TCP servers. Now we enter the main eventloop. If
 		// there are no watchers on the loop (except for the ones that were
