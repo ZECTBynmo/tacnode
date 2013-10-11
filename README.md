@@ -1,5 +1,7 @@
-This is a fork of node that builds as a lib. As a post-build step (which you can remove) it concatinates all output libraries into one for convenience
-===
+# This is a fork of node that builds as a lib. 
+
+As a post-build step (which you can remove) it concatinates all output libraries into one for convenience
+
 NOTE: I haven't tested the concatination step on anything but windows. If it doesn't work, there may be something wrong with how I setup the postbuild step in the gyp file. 
 
 For windows, I ended up calling the library concatination script (tools/concatlibs.py) directly from vcbuild.bat
