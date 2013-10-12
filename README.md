@@ -6,6 +6,12 @@ NOTE: I haven't tested the concatination step on anything but windows. If it doe
 
 For windows, I ended up calling the library concatination script (tools/concatlibs.py) directly from vcbuild.bat
 
+### Project Status
+
+This works right now, but I wouldn't recommend trying to use it without being ready to roll up your sleeves.
+
+Currently, there are issues with stderr and stdout. Where should they go? It would be great to build a 'log' page that's automatically hosted and receives all output, but right now nothing happens (unless it crashes haha).
+
 ### To build:
 
 Prerequisites (Unix only):
