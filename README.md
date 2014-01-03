@@ -1,10 +1,10 @@
 # This is a fork of node that builds as a lib. 
 
-As a post-build step (which you can remove) it concatinates all output libraries into one for convenience. All together, this is a very large library. Over 150 Mb on disk, and 2.5 - 3 Mb in memory once loaded.
+As a post-build step (which you can remove) it concatenates all output libraries into one for convenience. All together, this is a very large library. Over 150 Mb on disk, and 2.5 - 3 Mb in memory once loaded.
 
-NOTE: I haven't tested the concatination step on anything but windows. If it doesn't work, there may be something wrong with how I setup the postbuild step in the gyp file.
+NOTE: I haven't tested the concatenation step on anything but windows. If it doesn't work, there may be something wrong with how I setup the postbuild step in the gyp file.
 
-For windows, I ended up calling the library concatination script (tools/concatlibs.py) directly from vcbuild.bat
+For windows, I ended up calling the library concatenation script (tools/concatlibs.py) directly from vcbuild.bat
 
 ### Project Status
 
