@@ -52,7 +52,7 @@ Windows:
 
     // Synthesize argv and argc
     char *argv[] = {cCurrentPath, "C:/myScript.js" };
-    int argc = sizeof(argv) / sizeof(char*) - 1;
+    int argc = 2;
 
     // Now we start up node. The third argument sets whether we're using the
     // default UV message loop (which is blocking). If false, we use a custom
