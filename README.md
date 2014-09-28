@@ -8,7 +8,7 @@ For windows, I ended up calling the library concatenation script (tools/concatli
 
 ### Project Status
 
-This works right now, but I wouldn't recommend trying to use it without being ready to roll up your sleeves.
+This is a proof of concept. It works well enough to get scripts running and basic things run okay, but I wouldn't recommend trying to use it without being ready to really roll up your sleeves. This is an very unfinished module.
 
 Currently, there are issues with stderr and stdout. Where should they go? It would be great to build a 'log' page that's automatically hosted and receives all output, but right now nothing happens (unless it crashes haha).
 
